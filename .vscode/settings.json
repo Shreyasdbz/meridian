@@ -1,3 +1,33 @@
 {
-  "cSpell.words": ["Neuro"]
+  "cSpell.words": [
+    "Neuro",
+    "Meridian",
+    "Axis",
+    "Scout",
+    "Sentinel",
+    "Journal",
+    "Bridge",
+    "Gear",
+    "Fastify",
+    "Zustand",
+    "Vitest",
+    "Tailwind",
+    "Argon2id",
+    "seccomp",
+    "sqlite",
+    "nomic",
+    "Ollama",
+    "tsup",
+    "OWASP",
+    "HMAC",
+    "provenance"
+  ],
+  "typescript.preferences.importModuleSpecifier": "non-relative",
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "editor.formatOnSave": true,
+  "editor.tabSize": 2,
+  "files.eol": "\n",
+  "github.copilot.chat.codeGeneration.useInstructionFiles": true,
+  "chat.promptFiles": true,
+  "chat.agent.enabled": true
 }

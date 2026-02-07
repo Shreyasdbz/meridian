@@ -1,1 +1,195 @@
+# ============================================================
+# Dependencies
+# ============================================================
+node_modules/
+.pnp
+.pnp.js
+.pnp.cjs
+
+# ============================================================
+# Build output
+# ============================================================
+dist/
+build/
+out/
+*.tsbuildinfo
+tsconfig.tsbuildinfo
+*.js.map
+*.d.ts.map
+
+# tsup / bundler output
+*.mjs
+*.cjs
+# Note: only ignore these at package roots where they're build artifacts.
+# If you need to commit specific .mjs/.cjs files, use negation patterns.
+
+# ============================================================
+# Environment & secrets (SECURITY: non-negotiable)
+# ============================================================
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.cert
+*.crt
+credentials.json
+master_key.txt
+secrets.vault
+*.vault
+
+# ============================================================
+# Data directory (runtime databases, not checked in)
+# ============================================================
+# See architecture.md Section 8.2 — all runtime data lives here
+data/
+# Individual database files (catch any outside data/)
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
+*.sqlite
+*.sqlite3
+*.sqlite-wal
+*.sqlite-shm
+
+# ============================================================
+# Workspace (Gear file operations, user content)
+# ============================================================
+# See architecture.md Section 8.2 — workspace/ for Gear operations
+workspace/
+
+# ============================================================
+# Temp & cache
+# ============================================================
 tmp/
+temp/
+.cache/
+.turbo/
+
+# ============================================================
+# Test output
+# ============================================================
+coverage/
+test-results/
+playwright-report/
+blob-report/
+.nyc_output/
+
+# ============================================================
+# OS files
+# ============================================================
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# ============================================================
+# IDE & editors
+# ============================================================
+# JetBrains (WebStorm, IntelliJ)
+.idea/
+
+# VS Code — keep settings.json, ignore the rest
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+
+# Vim / Neovim
+*.swp
+*.swo
+*~
+*.vim
+Session.vim
+.netrwhist
+[._]*.s[a-v][a-z]
+[._]*.sw[a-p]
+
+# Emacs
+*~
+\#*\#
+.#*
+
+# Sublime Text
+*.sublime-workspace
+
+# ============================================================
+# Claude Code local files
+# ============================================================
+CLAUDE.local.md
+.claude/settings.local.json
+.claude/agent-memory-local/
+
+# ============================================================
+# Logs
+# ============================================================
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# ============================================================
+# Docker (runtime volumes, local overrides)
+# ============================================================
+docker-compose.override.yml
+docker-compose.local.yml
+.docker/
+
+# ============================================================
+# Playwright
+# ============================================================
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+
+# ============================================================
+# Vite (Bridge frontend)
+# ============================================================
+*.local
+
+# ============================================================
+# Node / npm
+# ============================================================
+.npm
+.eslintcache
+.prettiercache
+.stylelintcache
+*.tgz
+.yarn-integrity
+
+# Optional npm cache
+.cache/
+
+# ============================================================
+# Miscellaneous
+# ============================================================
+# Backup files
+*.bak
+*.backup
+*.orig
+*.rej
+
+# Archives (shouldn't be in repo)
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.rar
+*.7z
+
+# Binaries (pkg output, compiled native addons)
+*.node
+*.exe
+*.dll
+*.so
+*.dylib

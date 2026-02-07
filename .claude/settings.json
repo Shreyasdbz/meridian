@@ -1,0 +1,56 @@
+{
+  "permissions": {
+    "allow": [
+      "Read",
+      "Glob",
+      "Grep",
+      "WebSearch",
+      "WebFetch",
+      "Bash(npm run test*)",
+      "Bash(npm run lint*)",
+      "Bash(npm run typecheck*)",
+      "Bash(npm run build*)",
+      "Bash(npm run format*)",
+      "Bash(npx vitest*)",
+      "Bash(npx tsc*)",
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git branch*)",
+      "Bash(git show*)",
+      "Bash(ls *)",
+      "Bash(pwd)",
+      "Bash(which *)",
+      "Bash(node --version)",
+      "Bash(npm --version)",
+      "Bash(npm ls*)",
+      "Bash(npm info*)"
+    ],
+    "deny": [
+      "Bash(rm -rf /)",
+      "Bash(rm -rf ~)",
+      "Bash(: > *)",
+      "Bash(*secrets.vault*)",
+      "Bash(*ANTHROPIC_API_KEY*)",
+      "Bash(*OPENAI_API_KEY*)",
+      "Bash(*master_key*)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/validate-security.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  },
+  "env": {
+    "NODE_ENV": "development"
+  }
+}

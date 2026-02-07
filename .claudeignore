@@ -1,0 +1,36 @@
+# Secrets and credentials
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+credentials.json
+secrets.vault
+master_key.txt
+data/secrets.vault
+
+# Database files (large binary)
+data/*.db
+data/*.db-wal
+data/*.db-shm
+*.sqlite
+*.sqlite3
+
+# Build output
+node_modules/
+dist/
+build/
+.next/
+coverage/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+
+# Large generated files
+*.map
+*.chunk.js
