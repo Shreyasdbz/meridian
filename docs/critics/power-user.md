@@ -14,29 +14,29 @@ Here is what I count as mandatory before my first task:
 
 1. Install Meridian itself.
 2. Create an account (mandatory auth, even on localhost).
-3. Configure a Scout LLM provider. This means going to Anthropic/OpenAI, generating an API key, pasting it in.
-4. Configure a Sentinel LLM provider. The doc recommends a *different* provider for security. So that is a second API key from a second vendor.
-5. Optionally set up Ollama for local embeddings (otherwise Journal's semantic search does not work, or falls back to API-based embedding, which is another config).
-6. Optionally set up SearXNG for the web-search Gear (it is in the Docker Compose, so you probably want it).
-7. Configure `config.toml` with model names, worker counts, cost limits, etc.
+3. Configure at least one LLM provider for Scout. This means going to Anthropic/OpenAI, generating an API key, pasting it in.
+4. Configure a Sentinel LLM provider. The doc offers three configurations (Section 5.3.6): "High security" uses a different provider, "Balanced" uses the same provider with a different model, and "Budget" uses the same model for both with information barriers maintained. So at minimum, you need one API key -- not necessarily two.
 
-**Realistic estimate**: 30-45 minutes for someone comfortable with Docker and API keys. That is actually acceptable for this audience. The concern is that none of this is real until I do task #8: find or write a Gear that does something I actually care about. Out of the box, I get `file-manager`, `web-search`, `web-fetch`, `shell`, `scheduler`, and `notification`. None of those are what I installed an AI assistant for. I installed it to check my email, manage my calendar, and control my lights. Those Gear do not exist yet.
+And that might actually be it for a minimal start. The architecture (Section 10.4) explicitly states that configuration follows a precedence hierarchy where "sane, secure defaults baked into the application" comes first. The `config.toml` is an optional override for persistent customization, not a mandatory setup step. Ollama for local embeddings is optional (Journal can use API-based embeddings from the same provider). SearXNG is included in the Docker Compose file but not required.
 
-**The real setup time is unbounded** because the useful Gear does not ship with the platform. The architecture says Journal will eventually *create* Gear for me by learning from my tasks. But that requires a mature, working system with a solid reflection pipeline. On day one, I have a very expensive shell wrapper.
+**Realistic estimate**: 10-20 minutes for someone comfortable with Docker and API keys using the budget Sentinel configuration. Longer if you want the recommended different-provider Sentinel setup. That is actually acceptable for this audience. The concern is that none of this is real until I find or write a Gear that does something I actually care about. Out of the box, I get `file-manager`, `web-search`, `web-fetch`, `shell`, `scheduler`, and `notification`. These are useful primitives -- `web-fetch` can hit APIs, `shell` can execute arbitrary commands, `file-manager` handles workspace operations -- but none of them are the turnkey integrations I installed an AI assistant for. I installed it to check my email, manage my calendar, and control my lights. Those Gear do not exist yet.
 
-**What would help**: A "first 10 minutes" wizard in Bridge that walks you through: install, auth, paste one API key (not two -- let me use the same provider for both Scout and Sentinel to start), and then run a demo task end-to-end. Show me the value before asking me to optimize the configuration. Ship 3-5 "starter" Gear that cover common self-hoster use cases (email via IMAP/SMTP, calendar via CalDAV, HTTP webhook triggers). The difference between "this does nothing useful" and "this already checked my email" on day one is the difference between retention and uninstall.
+**The real setup time is unbounded** because the domain-specific Gear does not ship with the platform. The architecture says Journal will eventually *create* Gear for me by learning from my tasks (Sections 5.4.3-5.4.4). But that requires a mature, working system with a solid reflection pipeline. On day one, I have a natural language interface to a set of generic primitives.
+
+**What would help**: A "first 10 minutes" wizard in Bridge that walks you through: install, auth, paste one API key (budget mode -- same provider for both Scout and Sentinel), and then run a demo task end-to-end. Show me the value before asking me to optimize the configuration. Ship 3-5 "starter" Gear that cover common self-hoster use cases (email via IMAP/SMTP, calendar via CalDAV, HTTP webhook triggers). The difference between "this does nothing useful" and "this already checked my email" on day one is the difference between retention and uninstall.
 
 ---
 
 ## 2. The Dual-LLM Cost Problem
 
-Let me do the math the architecture document avoids.
+Let me do the math that the architecture document discusses but does not quantify. Section 5.3.7 covers cost implications and lists seven mitigations (fast path, adaptive model selection, smaller Sentinel model, Sentinel Memory, journal-skip, caching, local Sentinel), but does not show projected costs for typical usage patterns.
 
 **Assumptions for "moderate use" (50 tasks/day)**:
 
-- 50 tasks/day. The doc says ~60% are simple Gear dispatches (secondary model), ~40% require the primary model.
+- 50 tasks/day. The doc says ~60% are simple Gear dispatches (secondary model), ~40% require the primary model (Section 5.2.5).
 - Fast path handles maybe 30% of all interactions (conversational, no Gear). So out of 50, maybe 15 are fast-path (one Scout call) and 35 are full-path (Scout + Sentinel + maybe Journal reflection).
 - Average input tokens per call: ~2,000 (system prompt + context + plan). Average output tokens: ~500.
+- Note: these prices are estimates and will vary by provider and over time.
 
 **Full-path cost per task** (Scout primary + Sentinel):
 - Scout (Claude Sonnet 4.5): ~2,000 input ($3/M) + ~500 output ($15/M) = $0.006 + $0.0075 = $0.0135
@@ -51,25 +51,25 @@ Let me do the math the architecture document avoids.
 - 14 tasks use Sonnet for Scout (~$0.0135) + Sentinel GPT-4o (~$0.00675) = ~$0.02/task
 - 15 fast-path tasks: ~$0.0135/task
 
-**Daily cost**: (21 x $0.009) + (14 x $0.02) + (15 x $0.0135) = $0.189 + $0.28 + $0.2025 = ~$0.67/day
+**Daily cost (before Sentinel Memory savings)**: (21 x $0.009) + (14 x $0.02) + (15 x $0.0135) = $0.189 + $0.28 + $0.2025 = ~$0.67/day
 
 **Monthly cost**: ~$20/month just for LLM API calls.
 
-Add Journal reflection calls (maybe 30% of full-path tasks get reflected on) and embeddings, and you are looking at $25-35/month.
+Add Journal reflection calls (maybe 30% of full-path tasks get reflected on -- many are skipped via the journal-skip flag, Section 4.3.1) and embeddings, and you are looking at $25-35/month before Sentinel Memory savings.
 
 That is not terrible, but it is not nothing. For context, my entire homelab electricity bill is about $15/month. Meridian's API costs would be the single most expensive "utility" in my self-hosted stack. And that is at 50 tasks/day -- if I actually use this as my primary assistant and ramp up to 100+ tasks, it doubles.
 
-**The Sentinel Memory optimization is the saving grace here.** If I approve "delete files in /tmp" once and it remembers that decision, I am not paying for a Sentinel LLM call every time. But the doc does not quantify how much this saves. In practice, my usage patterns are probably 80% repetitive (same types of tasks, same permissions). If Sentinel Memory catches 80% of full-path tasks, the Sentinel LLM cost drops from ~$7/month to ~$1.40/month. That is significant. The doc should emphasize this more aggressively and give users a dashboard showing how much Sentinel Memory is saving them.
+**Sentinel Memory is the biggest cost saver here.** If I approve "delete files in /tmp" once and it remembers that decision (Section 5.3.8), I am not paying for a Sentinel LLM call every time -- Sentinel auto-approves from precedent without an LLM call. In practice, my usage patterns are probably 80% repetitive (same types of tasks, same permissions). If Sentinel Memory catches 80% of full-path tasks, the Sentinel LLM cost drops from ~$7/month to ~$1.40/month. Combined with the semantic caching in Section 11.1 (which can return cached responses for identical or near-identical queries without any API call), the steady-state cost could be significantly lower than the naive calculation. The doc should quantify these savings and give users a dashboard showing how much Sentinel Memory and caching are saving them.
 
-**Can I use a local model for Sentinel?** The doc says yes: "For budget-conscious deployments, Sentinel can run on a local model via Ollama. Plan review is a constrained enough task that even smaller models perform well." I want to believe this. Sentinel reviews structured JSON plans against a set of policies -- this is closer to classification than creative reasoning. A quantized Llama 3 8B or Mistral 7B might actually handle this. But the doc offers zero evidence. No benchmarks, no accuracy comparisons, no "we tested Sentinel with Llama 3 8B and it correctly rejected 95% of dangerous plans." This is a critical claim that needs validation before anyone trusts their system security to a 4-bit quantized model running on a Pi.
+**Can I use a local model for Sentinel?** The doc says yes: "For budget-conscious deployments, Sentinel can run on a local model via Ollama. Plan review is a constrained enough task that even smaller models perform well" (Section 5.3.7). I want to believe this. Sentinel reviews structured JSON plans against a set of policies -- this is closer to classification than creative reasoning. A quantized Llama 3 8B or Mistral 7B might actually handle this. But the doc offers zero evidence. No benchmarks, no accuracy comparisons, no "we tested Sentinel with Llama 3 8B and it correctly rejected 95% of dangerous plans." This is a critical claim that needs validation before anyone trusts their system security to a 4-bit quantized model running on a Pi.
 
-**What would help**: A cost calculator in the docs or in Bridge. Let me input my expected usage and see projected monthly costs. Show me the Sentinel Memory hit rate and how much it is saving. And please, benchmark local models for Sentinel and publish the results. If Mistral 7B catches 98% of what GPT-4o catches for Sentinel, that changes the entire cost equation.
+**What would help**: A cost calculator in the docs or in Bridge. Let me input my expected usage and see projected monthly costs including Sentinel Memory and caching savings. Show me the Sentinel Memory hit rate and how much it is saving. And please, benchmark local models for Sentinel and publish the results. If Mistral 7B catches 98% of what GPT-4o catches for Sentinel, that changes the entire cost equation.
 
 ---
 
-## 3. Approval Fatigue: The Biggest UX Threat
+## 3. Approval Fatigue: A Significant UX Concern
 
-Look at the default risk policies table:
+Look at the default risk policies table (Section 5.3.5):
 
 | Action | Policy |
 |--------|--------|
@@ -80,23 +80,24 @@ Look at the default risk policies table:
 | Sending messages | Needs user approval |
 | System config changes | Always needs user approval |
 
-Now imagine my daily routine: "Check my email, summarize the important ones, and draft replies." That is a network GET (auto-approved), then a network POST to send replies (needs approval), for each reply. Five replies = five approval prompts. Before lunch.
+Now imagine my daily routine: "Check my email, summarize the important ones, and draft replies." Scout would produce a single execution plan covering the entire task -- fetch emails (network GET, auto-approved), compose replies (low risk), send them (network POST, needs approval). The approval flow (Section 5.3.4) operates at the plan level: Sentinel reviews the entire plan and returns a single verdict (`approved`, `rejected`, `needs_user_approval`, or `needs_revision`). So this would be one approval prompt for the whole plan, not one per reply.
 
-"Deploy the latest version of my blog." That is a shell command (needs approval), maybe a git pull (shell, needs approval), a build step (shell), and a restart (shell). Four approvals for one task.
+Similarly, "deploy the latest version of my blog" -- git pull, npm install, npm build, pm2 restart -- would be one plan with multiple shell steps. One approval prompt, not four.
 
-Sentinel Memory helps here -- once I approve "git push to my-repo," it remembers. But there is a bootstrapping problem: for the first few weeks, I am training the system by approving everything. During that period, the approval volume will be punishing.
+This is better than per-step approval, but the concern is still real. If I am running 35 full-path tasks per day and Sentinel flags even a third of them for user approval, that is still 10-12 approval prompts per day. And during the bootstrapping period before Sentinel Memory has built up precedent decisions, the volume will be higher.
 
-**The real danger**: After a week of approving 20+ requests per day, I stop reading them. I tap "approve" reflexively. This is the exact failure mode the architecture is designed to prevent, and the UX actively encourages it. Every security system that relies on frequent human approval eventually trains its humans to approve without thinking. This is well-documented in security research.
+Sentinel Memory (Section 5.3.8) helps significantly here -- once I approve "shell commands matching `git *`," it auto-approves future matching actions without even making an LLM call. But there is a bootstrapping problem: for the first few weeks, I am training the system by approving many plans. During that period, the approval volume could be frustrating.
+
+**The real danger**: After a week of approving 10+ plans per day, I stop reading them. I tap "approve" reflexively. This is the exact failure mode the architecture is designed to prevent. Every security system that relies on frequent human approval eventually trains its humans to approve without thinking. This is well-documented in security research.
 
 **What is missing from the architecture**:
 
-- **Batch approval**: "Approve all steps in this plan" as a single action instead of step-by-step. The architecture describes step-level approval but does not mention batching.
-- **Trust escalation**: After I approve the same category of action 10 times, prompt me to create a standing rule instead of asking every time. "You have approved shell commands matching `git *` 12 times. Create a standing approval?" The architecture mentions Sentinel Memory recording decisions, but there is no mechanism to proactively suggest standing rules.
+- **Trust escalation**: After I approve the same category of action 10 times, prompt me to create a standing rule instead of asking every time. "You have approved plans containing shell commands matching `git *` 12 times. Create a standing approval?" The architecture mentions Sentinel Memory recording decisions, but there is no mechanism to proactively suggest standing rules.
 - **Approval profiles**: "Work mode" (auto-approve email, calendar, git operations) vs "cautious mode" (approve everything). Let me switch contexts instead of configuring individual rules.
 - **Time-bounded auto-approval**: "Auto-approve all actions for the next 30 minutes while I am actively using the system." Like `sudo` timeout behavior.
 - **Quiet hours**: At 3 AM when a scheduled job runs, do not ping me for approval. Either auto-approve based on Sentinel Memory or queue it for morning.
 
-Without these mechanisms, approval fatigue will be the number one reason people abandon Meridian.
+Without these mechanisms, approval fatigue during the bootstrapping period will frustrate early adopters. Once Sentinel Memory matures and learns the user's risk tolerance, the volume should drop significantly -- but that first few weeks is critical for retention.
 
 ---
 
@@ -113,7 +114,7 @@ The built-in Gear list tells the story:
 | `scheduler` | Deploy to my VPS (SSH + Docker) |
 | `notification` | Manage my Home Assistant (HA API) |
 
-There is almost zero overlap between what ships and what I need. To get Meridian doing anything useful for my homelab, I need at minimum:
+The built-in Gear are useful primitives -- `web-fetch` can hit HTTP APIs, `shell` can execute arbitrary commands (with approval), `file-manager` handles workspace files. But there is almost zero turnkey integration with the services self-hosters actually use. To get Meridian doing my daily homelab tasks, I need at minimum:
 
 1. **Email Gear** (IMAP/SMTP)
 2. **Calendar Gear** (CalDAV/Google Calendar API)
@@ -127,7 +128,9 @@ That is seven Gear packages that do not exist. Who writes them?
 
 **Option A: I write them.** The Gear API (Section 9.3) looks well-designed -- `GearContext` with `params`, `getSecret`, `readFile`, `writeFile`, `fetch`, `log`, `progress`. I could write an email Gear in a day. But I did not sign up to be a plugin developer. I signed up to use an AI assistant.
 
-**Option B: Journal creates them.** The architecture's most ambitious claim is that Journal's Gear Synthesizer will create Gear from task reflections. In theory, I say "check my email," it fails (no email Gear), Journal reflects on the failure, and the Gear Synthesizer writes an email Gear. In practice, this requires Journal to: understand IMAP protocol, generate correct TypeScript code, create a valid manifest with the right permissions, and produce something that actually works -- all from a single failed task attempt. I am deeply skeptical. The architecture does not show any examples of Gear Synthesizer output. What does a Journal-generated Gear actually look like? How does it discover API documentation? How does it handle authentication flows?
+**Option B: Journal creates them.** The architecture claims Journal's Gear Synthesizer can create Gear from task reflections (Section 5.4.3). This is more nuanced than "it builds a full Gear from a single failure." The architecture describes several trigger conditions: multi-step manual orchestration that could be automated, tasks that failed where Journal can see a pattern, Gear that failed repeatedly, or explicit user requests. And Journal-generated Gear goes through user review before activation (Section 5.6.4) -- it lands as a draft, gets flagged for review, and the user must approve it.
+
+In practice, for simpler patterns this could work well. If I use `shell` to run ImageMagick commands repeatedly, Journal could plausibly synthesize an `image-resize` Gear that wraps those calls. But for complex integrations -- IMAP IDLE for push notifications, MIME parsing, OAuth2 flows -- I am skeptical. The architecture does not show any examples of Gear Synthesizer output. What does a Journal-generated Gear actually look like? How does it discover API documentation? How does it handle authentication flows?
 
 **Option C: Community.** The doc mentions a future Gear Marketplace (Section 16.3) but this is listed under "Future Considerations." At launch, there is no ecosystem. This is the classic chicken-and-egg problem: no users without Gear, no Gear without users.
 
@@ -135,23 +138,19 @@ That is seven Gear packages that do not exist. Who writes them?
 
 ---
 
-## 5. Offline Capability: Afterthought Is Generous
+## 5. Offline Capability: Needs More Thought
 
-The graceful degradation table says:
+The graceful degradation table (Section 4.4) says:
 
 > Both APIs unreachable: System enters "offline mode." Accepts messages, queues jobs, but cannot execute. Resumes automatically when connectivity returns.
 
-So when my internet goes down, Meridian becomes a message queue that does not process anything. But my internet going down is exactly when I need local automation the most -- I still want to control my lights, manage local files, and run local scripts.
+This is specifically describing the scenario where the user's configured LLM providers become unreachable. If you are using cloud providers for both Scout and Sentinel, this means Meridian queues everything when your internet goes down.
 
-The doc mentions local LLM support through Ollama in several places:
-- Section 5.2.4: Ollama listed as a supported provider
-- Section 5.3.7: "Local Sentinel" mentioned for budget deployments
-- Section 7.3: "Local option: Users can run local LLMs via Ollama"
-- Section 16.4: "Full support for running Scout and/or Sentinel on local models" -- under **Future Considerations**
+However, the architecture does support local LLMs via Ollama as a launch-day provider. Section 5.2.4 lists Ollama as a supported provider alongside Anthropic, OpenAI, Google, and OpenRouter. Section 5.3.7 explicitly discusses running Sentinel on a local model via Ollama. If you configure Ollama for both Scout and Sentinel, the system would continue functioning offline -- the graceful degradation scenario would not apply because your "API" is local.
 
-That last point is the tell. Full local LLM support is a future consideration, not a launch feature. At launch, Ollama is listed as a "supported provider" but there is no detail on how it performs, what models are recommended, or what happens when you run Scout on a 7B model that struggles with complex plan generation.
+What Section 16.4 lists as a "Future Consideration" is the advanced local model experience: model recommendations based on device capabilities, hybrid mode (local for simple tasks, cloud for complex), and quantized model support. Basic Ollama-as-a-provider works at launch; smart local model orchestration is future.
 
-**The core problem**: Meridian's entire architecture assumes capable LLMs. Scout needs to decompose tasks, generate structured JSON plans, select Gear, and handle failures. This requires a model that can reliably produce structured output. Local models in the 7B-13B range are getting better, but they are not reliable enough for complex planning yet. Sentinel is more feasible locally (structured plan review is simpler), but Scout on a local model will produce garbage plans for anything beyond trivial tasks.
+**The core problem** is that even with Ollama available, Meridian's architecture assumes capable LLMs. Scout needs to decompose tasks, generate structured JSON plans, select Gear, and handle failures. Local models in the 7B-13B range are getting better, but they are not reliable enough for complex planning yet. Sentinel is more feasible locally (structured plan review is simpler), but Scout on a local model will produce unreliable plans for anything beyond simple tasks.
 
 **What I actually want**: A tiered offline mode.
 
@@ -159,7 +158,7 @@ That last point is the tell. Full local LLM support is a future consideration, n
 2. **Partial offline** (queued for cloud, local for known patterns): For complex tasks, queue them. For tasks that match Sentinel Memory and procedural memory closely enough, execute them locally using a simplified planning path.
 3. **Emergency mode**: Let me execute Gear directly from Bridge without going through Scout/Sentinel at all. I know what I want to do, I just need Meridian to run the Gear with the right parameters. Like `curl` but for my Gear ecosystem.
 
-The architecture does not describe any of these. The "offline mode" is just "wait until internet comes back." For a system designed to run on a Pi in my house, that is not good enough.
+The architecture does not describe any of these tiered approaches. And crucially, it does not discuss local model performance expectations, recommended models, or minimum hardware requirements for local inference. For a system designed to run on a Pi, this guidance is essential.
 
 ---
 
@@ -173,23 +172,24 @@ What happens:
 2. Axis dispatches to Scout. (~50ms)
 3. Scout makes an LLM API call to understand intent and produce a plan. (**2-5 seconds**, depending on provider latency and model)
 4. Axis sends plan to Sentinel. (~50ms)
-5. Sentinel makes an LLM API call to validate the plan. (**2-5 seconds**)
-   - Unless Sentinel Memory has a matching approval, in which case this is ~10ms.
+5. Sentinel checks its memory for matching precedent decisions (Section 5.3.8).
+   - If Sentinel Memory match found (likely after first use): auto-approve, ~10ms. Skip to step 6.
+   - If no match: Sentinel makes an LLM API call to validate. **2-5 seconds**.
 6. Axis dispatches to the smart-home Gear. (~200ms for Hue API call)
 7. Result returned through Bridge. (~50ms)
 
-**Best case** (Sentinel Memory hit): ~3-6 seconds.
-**Worst case** (no Sentinel Memory, cold LLM calls): ~5-11 seconds.
+**Best case** (Sentinel Memory hit): ~3-6 seconds. (One LLM call for Scout only.)
+**Worst case** (no Sentinel Memory, cold LLM calls): ~5-11 seconds. (Two LLM calls.)
 
 My Google Home does this in under 1 second. My Home Assistant automation does it in under 500ms.
 
-The architecture acknowledges the fast path for conversational queries, but "turn off the lights" is NOT a fast-path interaction -- it requires Gear execution. Every single home automation command goes through the full Scout + Sentinel + Gear pipeline. There is no "I know exactly what Gear to call and what parameters to use" shortcut.
+The architecture acknowledges the fast path (Section 4.3) for conversational queries that need no Gear, but "turn off the lights" requires Gear execution and goes through the full path. There is no "I know exactly what Gear to call and what parameters to use" shortcut that would bypass Scout.
 
 **What is missing**: A **command mode** or **direct dispatch** for well-understood tasks. If I have used "turn off the living room lights" before and it mapped to `smart-home.toggle({ device: "living-room-lights", state: "off" })`, the system should recognize this pattern and skip the full LLM planning step. Use embedding similarity to match against previous successful plans and replay them directly. Scout should only be involved when the request is ambiguous or novel.
 
 The doc mentions semantic caching (Section 11.1) with a >0.98 similarity threshold, but this is for identical queries returning cached *responses*, not for replaying execution plans. The system needs plan-level caching: "this input reliably maps to this plan, skip Scout."
 
-**Alternatively**: The system needs to acknowledge that it is not competing with Google Home for real-time control. Meridian's value proposition for home automation is not "voice control" -- it is "complex orchestration." "When I say goodnight, turn off all the lights, lock the doors, set the thermostat to 65, arm the alarm, and send me a summary of tomorrow's calendar." That 20-second pipeline is acceptable for a 6-step orchestration. But for "turn off one light," it is absurd.
+**Alternatively**: The system needs to acknowledge that it is not competing with Google Home for real-time control. Meridian's value proposition for home automation is not "voice control" -- it is "complex orchestration." "When I say goodnight, turn off all the lights, lock the doors, set the thermostat to 65, arm the alarm, and send me a summary of tomorrow's calendar." That multi-second pipeline is acceptable for a 6-step orchestration. But for "turn off one light," it is frustrating.
 
 ---
 
@@ -199,22 +199,23 @@ The architecture says:
 
 > Bridge listens on 127.0.0.1 only. Not 0.0.0.0. Remote access requires explicit configuration.
 
-And:
+And in Section 6.5:
 
+> TLS: When remote access is enabled, TLS is mandatory. Meridian can use Let's Encrypt via ACME, or a user-provided certificate.
 > Reverse proxy support: Documentation provides hardened Nginx/Caddy configurations for remote access.
 
-But those configurations do not exist yet -- this is an architecture document for a project with no code. When the code ships, I need to know: how do I approve a task from my phone while I am away from home?
+So the architecture does acknowledge remote access and mandates TLS for it. But those configurations do not exist yet -- this is an architecture document for a project with no code. When the code ships, I need to know: how do I approve a task from my phone while I am away from home?
 
-**My current options** (none covered in the architecture):
+**My current options** (the architecture covers some but not all):
 
-1. **Tailscale/WireGuard**: Expose Bridge over a mesh VPN. Works, but now I need a VPN client on my phone. Not terrible for a power user, but a barrier.
-2. **Reverse proxy + TLS**: Caddy with automatic Let's Encrypt. Exposes Meridian to the internet, which the architecture actively discourages. Now I need to trust that Bridge's authentication is bulletproof on day one.
-3. **Cloudflare Tunnel**: Zero-trust access without exposing ports. Good option, but not mentioned.
-4. **Push notifications to phone, approve via web**: Bridge supports Web Push API. This could work if the push notification includes an approve/reject action. But the doc describes push as "opt-in" and does not detail the approval UX for mobile.
+1. **Tailscale/WireGuard**: Expose Bridge over a mesh VPN. Works, but now I need a VPN client on my phone. Not terrible for a power user, but a barrier. Not mentioned in the architecture.
+2. **Reverse proxy + TLS**: Caddy with automatic Let's Encrypt. The architecture supports this (Section 6.5 mentions hardened Nginx/Caddy configs). Exposes Meridian to the internet, which the architecture's localhost-by-default posture discourages. Now I need to trust that Bridge's authentication is bulletproof on day one.
+3. **Cloudflare Tunnel**: Zero-trust access without exposing ports. Good option, not mentioned.
+4. **Push notifications to phone, approve via web**: Bridge supports Web Push API (Section 5.5.5). This could work if the push notification includes an approve/reject action. But the doc describes push as "opt-in" and does not detail the approval UX for mobile.
 
 **What I actually need**: The ability to get an approval notification on my phone and tap approve/reject without opening the full Bridge UI. This is the most common mobile interaction -- I am not going to plan tasks from my phone, but I need to approve them. A simple approval notification with one-tap actions (like a smart home notification) would cover 90% of mobile use cases.
 
-The architecture should include a section on remote access patterns. Not just "we support reverse proxies" but "here are the three recommended patterns for remote access, ranked by security and convenience." This is not a nice-to-have. If I cannot approve tasks from my phone, the approval system becomes a blocker for background automation.
+The architecture should include a section on recommended remote access patterns -- not just "we support reverse proxies and TLS" but "here are three recommended patterns for remote access, ranked by security and convenience." This is not a nice-to-have. If I cannot approve tasks from my phone, the approval system becomes a blocker for background automation.
 
 ---
 
@@ -231,19 +232,20 @@ Together, these three cover most of what Meridian promises. So why would I add a
 **What Meridian offers that my stack does not**:
 
 1. **Natural language task decomposition**: I cannot say "set up a new Node project with testing and deploy it to my VPS" to Home Assistant or n8n. Meridian's Scout can (in theory) break this down and orchestrate it.
-2. **Learning from failures**: n8n workflows either work or they do not. They do not get better over time. Journal's reflection pipeline is genuinely novel if it works.
+2. **Learning from failures**: n8n workflows either work or they do not. They do not get better over time. Journal's reflection pipeline (Section 5.4.3-5.4.4) is genuinely novel if it works.
 3. **Unified interface**: Instead of three UIs (HA, n8n, Open WebUI), one conversational interface. This is valuable if the Gear ecosystem is rich enough.
 4. **Autonomous multi-step execution**: n8n needs me to design the workflow. Meridian figures out the workflow from my request. This is the core value proposition.
+5. **Independent safety validation**: Nothing in my current stack reviews actions before executing them. Sentinel's information barrier approach is genuinely better than unchecked automation.
 
 **What my stack offers that Meridian does not**:
 
 1. **Maturity**: Home Assistant has been running my home for years without incident. n8n workflows have been stable for months. Meridian is an architecture document.
 2. **Ecosystem**: 2,000+ HA integrations vs. 6 built-in Gear.
-3. **Reliability**: My HA automations run in milliseconds, offline, with zero LLM dependency. Meridian requires an LLM API call for every action.
+3. **Reliability**: My HA automations run in milliseconds, offline, with zero LLM dependency. Meridian's full-path tasks require at least one LLM call (Scout), though Sentinel Memory can eliminate the second call for previously-approved patterns, and the fast path (Section 4.3) handles simple conversational queries without Gear at all.
 4. **Community**: Huge forums, extensive documentation, thousands of shared automations. Meridian has zero community.
-5. **Cost**: My existing stack costs nothing beyond electricity. Meridian adds $25-35/month in API costs.
+5. **Cost**: My existing stack costs nothing beyond electricity. Meridian adds meaningful API costs (see Section 2).
 
-**The honest assessment**: Meridian is not a replacement for Home Assistant or n8n. It is a **layer on top of them**. The value is in the natural language interface, the task decomposition, and the learning capability. But the architecture does not position it this way. It positions Meridian as a standalone platform that needs its own Gear for everything. The smart play would be to ship a Home Assistant Gear and an n8n Gear on day one, making Meridian an intelligent orchestrator for tools people already use.
+**The honest assessment**: Meridian is not a replacement for Home Assistant or n8n. It is a **layer on top of them**. The value is in the natural language interface, the task decomposition, and the learning capability. The architecture's MCP compatibility section (9.4) actually hints at this -- it discusses wrapping existing MCP servers as Gear, which could extend to wrapping existing tools. But the architecture does not position Meridian explicitly as an orchestration layer. The smart play would be to ship a Home Assistant Gear and an n8n Gear on day one, making Meridian an intelligent orchestrator for tools people already use.
 
 **What would make me adopt Meridian**: If it could sit in front of my existing stack and make it smarter. "Meridian, when the temperature drops below 40, turn on the hallway heater, but only if I'm home" -- and it creates a Home Assistant automation for me through the HA API. "Meridian, set up an n8n workflow that monitors this RSS feed and emails me when a new post matches these keywords" -- and it creates the n8n workflow. Now it is adding value without replacing what works.
 
@@ -251,23 +253,25 @@ Together, these three cover most of what Meridian promises. So why would I add a
 
 ## 9. Data Portability: Underspecified
 
-The doc says:
+The doc says (Section 5.4.6):
 
 > Export: Download all memories in a portable format (JSON/Markdown).
 
-And:
+And (Section 8.4):
 
 > `meridian export` creates a portable archive of all data (databases + workspace + config) for migration.
+
+Section 8.4 also describes automated daily backups, backup rotation (7 daily, 4 weekly, 3 monthly), integrity verification, and a `meridian restore` command. So the backup/restore story is actually reasonably well-defined.
 
 Questions the architecture does not answer:
 
 1. **What is the export format?** "JSON/Markdown" is not a specification. What is the schema? Is it documented? Can I parse it with a script?
 2. **Are Gear portable?** If I write custom Gear (or Journal generates them), can I export them independently and share them?
 3. **Can I import into another system?** If I stop using Meridian, can I import my episodic memories into Obsidian? My procedures into n8n? My semantic memories into a personal knowledge base? Or is the export format Meridian-specific?
-4. **SQLite as the escape hatch**: The architecture uses SQLite for everything. In the worst case, I can always query the databases directly. This is actually a strong portability argument -- it just is not framed that way. "Your data is always in SQLite, which you can query with any tool" is better than "we have an export command."
-5. **What about Sentinel Memory?** The doc says Sentinel Memory is in an isolated database. Can I export my approval decisions? If I rebuild Meridian from scratch, do I lose all my standing approvals and go back to approval fatigue?
+4. **SQLite as the escape hatch**: The architecture uses SQLite for everything, with well-documented schemas (Section 8.3). In the worst case, I can always query the databases directly with any SQLite tool. This is actually a strong portability argument -- it just is not framed that way. "Your data is always in SQLite with documented schemas, which you can query with any tool" is better than "we have an export command."
+5. **What about Sentinel Memory?** The doc says Sentinel Memory is in an isolated database (`sentinel.db`). Can I export my approval decisions? If I rebuild Meridian from scratch, do I lose all my standing approvals and go back to approval fatigue?
 
-**What would help**: A documented export schema. Make it a real format with a version number and a spec. Ensure that the export includes everything: memories, Gear, Sentinel decisions, config, and audit logs. Make it possible to reconstruct a working Meridian instance from an export. And consider making memories exportable to standard formats (Markdown files with YAML frontmatter, for example) so they are useful outside Meridian.
+**What would help**: A documented export schema. Make it a real format with a version number and a spec. Ensure that the `meridian export` archive includes everything: memories, Gear, Sentinel decisions, config, and audit logs. Make it possible to reconstruct a working Meridian instance from an export (the `meridian restore` command suggests this is the intent, but the scope is not explicit). And consider making memories exportable to standard formats (Markdown files with YAML frontmatter, for example) so they are useful outside Meridian.
 
 ---
 
@@ -288,22 +292,20 @@ I run 15+ containers on a Raspberry Pi 4 (8GB). Memory is my most constrained re
 | OS + Docker | ~1 GB |
 | **Total** | **~3.2 GB** |
 
-That leaves ~4.8 GB free. What does Meridian consume?
-
-The architecture says:
+That leaves ~4.8 GB free. What would Meridian consume? The architecture does not provide resource estimates, so here are my own rough projections:
 
 - Node.js process (Axis + Bridge): baseline ~100-200 MB, probably.
 - SQLite databases: negligible for memory (WAL mode, mmap).
-- Ollama for local embeddings: the `nomic-embed-text` model is ~274 MB on disk, but inference uses more RAM. Realistically 500 MB-1 GB for Ollama with one small model loaded.
+- Ollama for local embeddings (if configured): the `nomic-embed-text` model plus Ollama runtime, realistically 500 MB-1 GB.
 - If I run a local model for Sentinel: add another 4-8 GB for a 7B model quantized to 4-bit.
 - SearXNG (included in Docker Compose): ~150 MB (already running mine, so no additional cost).
 - Gear sandbox processes: each process-level sandbox is probably ~50-100 MB.
 
-**Conservative estimate (no local LLM)**: ~300-500 MB. Fits fine.
-**With local embeddings**: ~800 MB-1.2 GB. Tight but possible.
-**With local Sentinel model**: ~5-9 GB. Does not fit on my Pi. Period.
+**Conservative estimate (cloud LLMs, no local models)**: ~300-500 MB. Fits fine.
+**With local embeddings via Ollama**: ~800 MB-1.2 GB. Tight but possible.
+**With local Sentinel model**: ~5-9 GB. Does not fit on my Pi alongside my existing stack. Period.
 
-The architecture says "Axis monitors system memory and pauses non-critical jobs if available RAM drops below 512 MB." Good. But it does not give estimated resource usage anywhere in the document. Section 10.1 lists target environments and hardware specs but never says "Meridian will use approximately X MB of RAM at idle and Y MB under load."
+The architecture says "Axis monitors system memory and pauses non-critical jobs if available RAM drops below 512 MB" (Section 11.2). Good. But it does not give estimated resource usage anywhere in the document. Section 10.1 lists target environments (including Raspberry Pi 4/5 with 4-8 GB) but never says "Meridian will use approximately X MB of RAM at idle and Y MB under load."
 
 **What would help**: A resource usage table in the deployment section. Idle RAM, peak RAM, disk usage growth rate, CPU usage at idle vs. under load. Benchmark on an actual Raspberry Pi 4. Tell me whether I can run this alongside my existing stack or whether I need dedicated hardware.
 
@@ -314,14 +316,16 @@ The architecture says "Axis monitors system memory and pauses non-critical jobs 
 The architecture's most compelling feature is Journal's learning pipeline. The claim: Meridian improves over time by reflecting on task outcomes, building procedural memories, and synthesizing Gear. Let me stress-test this.
 
 **Scenario 1: Preference learning**
-I say: "Generate a report, use dark mode." Meridian generates a report with dark mode. Journal reflects, creates a semantic memory: "User prefers dark mode in reports." Next time I say "generate a report," Scout retrieves this memory and applies dark mode automatically.
+I say: "Generate a report, use dark mode." Meridian generates a report with dark mode. Journal reflects, creates a semantic memory: "User prefers dark mode in reports." Next time I say "generate a report," Scout retrieves this memory (via hybrid search, Section 5.4.5) and applies dark mode automatically.
 
 This is plausible. It is basically retrieval-augmented generation with a preference store. The architecture supports it well (semantic memory, vector search, context injection into Scout).
 
 **Scenario 2: Procedure learning**
 I say: "Deploy my blog." The task involves: git pull, npm install, npm build, pm2 restart. It succeeds. Journal reflects, creates a procedural memory: "To deploy the blog: git pull, npm install, npm build, pm2 restart." Next time I say "deploy my blog," Scout retrieves this procedure and produces a faster, more accurate plan.
 
-This is also plausible, assuming the reflection LLM is good enough to extract the generalizable procedure from the specific execution log. But there is a fragility issue: what if my deployment process changes? I add a database migration step. The old procedure is now wrong. The doc says semantic memories are "updated as new information contradicts old knowledge," but does this extend to procedural memories? How does Journal know that a procedure is stale?
+This is also plausible, assuming the reflection LLM is good enough to extract the generalizable procedure from the specific execution log. But there is a fragility issue: what if my deployment process changes? I add a database migration step. The old procedure is now wrong.
+
+The architecture does address this partially. The Reflector (Section 5.4.3) analyzes "Does this contradict any existing memories?" as part of every reflection cycle. And Section 5.4.4 shows that when a procedure-based plan fails, Journal reflects on the failure: "What went wrong? Can the Gear be fixed? Should a new Gear be created? Store the failure pattern to avoid repeating it." So stale procedures should get corrected when they cause failures. But what about procedures that do not fail but are merely suboptimal? The architecture does not describe a mechanism for proactively refreshing procedural memory.
 
 **Scenario 3: Gear synthesis**
 I say: "Resize all images in /photos to 1920x1080." No Gear exists. Scout uses the `shell` Gear to run ImageMagick commands. It works. Journal reflects and decides this is a reusable pattern. The Gear Synthesizer creates a `image-resize` Gear with a proper manifest, input validation, and ImageMagick calls wrapped in the GearContext API.
@@ -333,9 +337,11 @@ This is where my skepticism peaks. The Gear Synthesizer needs to:
 4. Generate a valid manifest with correct permissions (filesystem read/write paths, maybe network for downloading images).
 5. Produce code that actually works in the sandbox.
 
-This is not impossible -- LLMs can generate working code. But it is non-trivial, and the architecture offers no examples of what Gear Synthesizer output actually looks like. No before/after. No sample generated Gear. No discussion of how it validates the generated code before presenting it to the user.
+This is not impossible -- LLMs can generate working code. And the architecture does require Journal-generated Gear to go through user review before activation (Section 5.6.4: "User is notified via Bridge → User reviews and approves → Gear becomes Available"). So bad synthesized Gear gets caught. But the architecture offers no examples of what Gear Synthesizer output actually looks like. No before/after. No sample generated Gear. No discussion of how it validates the generated code before presenting it to the user.
 
-**The learning promise will take months to show value.** Preference learning works immediately. Procedure learning works after 5-10 repetitions of a task type. Gear synthesis might work after the first attempt or might produce broken code that I need to debug. The architecture should be honest about this timeline instead of implying that learning is a day-one feature.
+For simple patterns (wrapping CLI tools, making HTTP calls to known APIs), this is plausible. For complex integrations (OAuth flows, WebSocket connections, binary protocol handling), I remain deeply skeptical.
+
+**The learning promise will take time to show full value.** Preference learning works immediately. Procedure learning works after a few repetitions of a task type. Gear synthesis might work after the first attempt for simple cases or might produce broken code that I need to debug. The architecture should be honest about this timeline and provide concrete examples.
 
 **What would help**: Show concrete examples. Include a sample Gear Synthesizer output in the architecture document. Show what a Journal reflection entry looks like. Demonstrate the progression from "first attempt, no memory" to "tenth attempt, full procedural memory, synthesized Gear." Make the learning tangible, not theoretical.
 
@@ -347,7 +353,7 @@ The Gear system is only as good as its ecosystem. The architecture acknowledges 
 
 > Section 16.3 - Gear Marketplace: A curated, signed registry of community-contributed Gear... (Future Consideration)
 
-So at launch: no marketplace, no community Gear, no ecosystem. Just 6 built-in Gear and Journal's ability to maybe synthesize new ones.
+So at launch: no marketplace, no community Gear, no ecosystem. Just 6 built-in Gear, the `shell` Gear as a universal fallback, and Journal's ability to potentially synthesize new ones.
 
 **How other platforms bootstrapped their ecosystems**:
 
@@ -355,15 +361,9 @@ So at launch: no marketplace, no community Gear, no ecosystem. Just 6 built-in G
 - **n8n**: Shipped with 40+ nodes covering common services. Community contributed hundreds more.
 - **OpenClaw/ClawHub**: 5,700+ skills (6.9% malware rate, but still -- massive adoption).
 
-**Meridian's bootstrap strategy appears to be**:
+The architecture does not describe a Gear ecosystem bootstrapping strategy. It focuses on the platform's capabilities and leaves the question of initial Gear breadth unaddressed.
 
-1. Ship minimal built-in Gear.
-2. Hope that Journal's Gear Synthesizer fills the gap.
-3. Eventually build a marketplace.
-
-This is backwards. You need a usable system to attract users. You need users to build community Gear. You need community Gear to make the system usable.
-
-**The Gear Synthesizer is not a substitute for a Gear ecosystem.** It can handle simple patterns (wrap a CLI tool, make HTTP calls to a known API), but it cannot handle complex integrations (OAuth flows, WebSocket connections, binary protocol handling, multi-step authentication). An email Gear needs to handle IMAP IDLE for push notifications, MIME parsing, attachment handling, and OAuth2 for Gmail. Journal is not going to synthesize that.
+**The Gear Synthesizer is not a substitute for a Gear ecosystem.** It can handle simple patterns (wrap a CLI tool, make HTTP calls to a known API), but it cannot handle complex integrations (OAuth flows, WebSocket connections, binary protocol handling, multi-step authentication). An email Gear needs to handle IMAP IDLE for push notifications, MIME parsing, attachment handling, and OAuth2 for Gmail. Journal is not going to synthesize that from a failed task.
 
 **What would help**:
 
@@ -383,23 +383,24 @@ This is backwards. You need a usable system to attract users. You need users to 
 - **SQLite everywhere is the right call.** No daemon, portable, backable-up by file copy. Perfect for self-hosted.
 - **The audit trail is comprehensive.** Being able to inspect every decision the system made is exactly what power users want.
 - **Graceful degradation is well thought out.** Each failure mode has a defined behavior. This matters on flaky home networks.
+- **Plan-level approval is the right granularity.** Sentinel reviewing entire plans rather than individual steps avoids the worst of approval fatigue, and Sentinel Memory learning from past decisions is a smart optimization.
 
 **What concerns me**:
 
-- **Cold start problem.** Too few built-in Gear to be useful on day one. The Gear Synthesizer is promising but unproven. Without a Gear ecosystem, this is a beautifully architected system that cannot do anything.
-- **Approval fatigue.** The approval UX will drive users away within a week unless there are batch approval, trust escalation, and approval profiles. Sentinel Memory helps but is not enough on its own.
-- **Latency for simple tasks.** Two LLM round-trips for "turn off the lights" is not acceptable. There needs to be a fast-execution path for well-understood, previously-executed tasks that skips Scout and Sentinel entirely.
-- **Offline mode is useless.** "Queue everything until internet returns" is not an offline mode. It is a pause button. For a device that sits in my house, local execution of known tasks should work without internet.
-- **Cost is meaningful.** $25-35/month for moderate use is real money. This needs to be front and center in the docs, not buried in a cost implications subsection. Users should know what they are signing up for.
-- **Mobile access is unaddressed.** The architecture mandates localhost binding but offers no guidance on remote access patterns. For a system that requires approval of background tasks, this is a critical gap.
+- **Cold start problem.** Too few built-in Gear to be useful on day one. The Gear Synthesizer is promising but unproven. Without a Gear ecosystem, this is a beautifully architected system that cannot do much.
+- **Approval fatigue during bootstrapping.** Plan-level approval is better than step-level, and Sentinel Memory will reduce the volume over time. But the first few weeks before Sentinel Memory matures will be approval-heavy. Trust escalation and approval profiles would help.
+- **Latency for simple tasks.** Even with Sentinel Memory eliminating the second LLM call, one Scout LLM round-trip for "turn off the lights" adds 2-5 seconds. There needs to be a plan-replay mechanism for well-understood, previously-executed tasks that skips Scout entirely.
+- **Offline story needs work.** Ollama is supported as a provider at launch, which is better than "queue everything." But the architecture lacks guidance on local model selection, performance expectations, and tiered offline behavior. For a device that sits in my house, this needs to be first-class.
+- **Cost is meaningful.** $20-35/month for moderate use (before Sentinel Memory savings) is real money that deserves transparency. A cost dashboard showing actual usage and savings from Sentinel Memory and caching would build user trust.
+- **Mobile access is underspecified.** The architecture supports TLS and reverse proxies but offers no recommended patterns. For a system that requires approval of background tasks, remote approval UX needs detailed attention.
 
 **Would I deploy Meridian?**
 
 Today, with just the architecture document: no. There is nothing to deploy.
 
-When v0.1 ships: maybe, if it ships with enough Gear to do something useful, has a one-API-key quick start, and the approval UX is not punishing.
+When v0.1 ships: maybe, if it ships with enough Gear to do something useful, has a one-API-key quick start (budget Sentinel config), and the approval UX is not punishing during the bootstrapping period.
 
-When v1.0 ships with a mature Gear ecosystem, proven learning pipeline, and working local LLM support: yes, probably. The architecture is genuinely good. The security model is best-in-class for this category. The learning promise is the killer feature, if it works.
+When v1.0 ships with a mature Gear ecosystem, proven learning pipeline, and polished local LLM support: yes, probably. The architecture is genuinely good. The security model is best-in-class for this category. The learning promise is the killer feature, if it works.
 
 **The risk is that Meridian dies in the gap between "impressive architecture" and "useful product."** That gap is filled with Gear, UX polish, and community -- none of which can be architected into existence. They have to be built, tested, and iterated on with real users.
 

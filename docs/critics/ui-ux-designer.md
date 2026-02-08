@@ -9,9 +9,9 @@
 
 ## Executive Summary
 
-Meridian's architecture document is 2,077 lines long. Approximately 60 of those lines address the user interface. That ratio tells you everything about the project's current UX maturity. The Bridge section (5.5) reads like a feature checklist, not an interaction design. There is no user journey mapping, no consideration of cognitive load, no hierarchy of information, no progressive disclosure strategy, and no acknowledgment that the system's internal complexity must be aggressively hidden from the person using it.
+Meridian's architecture document is 2,077 lines long. Approximately 80 of those lines address the user interface. That ratio tells you everything about the project's current UX maturity. The Bridge section (5.5) reads like a feature checklist, not an interaction design. There is no user journey mapping, no consideration of cognitive load, no hierarchy of information, no progressive disclosure strategy, and no acknowledgment that the system's internal complexity must be aggressively hidden from the person using it.
 
-The architecture describes a system with six named components, three memory types, four approval verdicts, seven job states, three Gear origins, five notification channels, six built-in Gear, ten deployment configuration options, and a dual-LLM trust boundary. The user, meanwhile, just wants to say "check my email" and have it work. The gap between internal complexity and expected simplicity is the central UX challenge of this project, and the architecture document does not engage with it at all.
+The architecture describes a system with six named components, three memory types, four approval verdicts, eight job states, three Gear origins, three notification layers, six built-in Gear, numerous deployment configuration options, and a dual-LLM trust boundary. The user, meanwhile, just wants to say "check my email" and have it work. The gap between internal complexity and expected simplicity is the central UX challenge of this project, and the architecture document does not engage with it at all.
 
 What follows is a section-by-section critique with specific recommendations.
 
@@ -77,55 +77,55 @@ The architecture's default risk policies (Section 5.3.5) require user approval f
 - System configuration changes
 - Financial transactions
 
-For a system designed to "execute tasks autonomously," this is an enormous amount of interruption. Consider a simple task: "Draft a summary of today's news and email it to my team." This triggers:
+For a system designed to "execute tasks autonomously," this is a significant amount of interruption. Consider a simple task: "Draft a summary of today's news and email it to my team." This triggers:
 
 1. Web search (GET, probably auto-approved)
 2. Web fetch for article content (GET, probably auto-approved)
 3. File write to save the draft (approval if outside workspace)
 4. Email send (approval required)
 
-That is a minimum of one approval interruption for what the user perceives as a single command. Now consider "Set up a new Node project with testing": file writes, shell commands (`npm init`, `npm install`), configuration changes. That could be five or more approval prompts.
+To the architecture's credit, approval operates at the plan level, not the step level. Sentinel's `ValidationResult` (Section 5.3.3) returns a single `verdict` for the entire plan, and the approval flow (Section 5.3.4) shows one `NEEDS_USER_APPROVAL` prompt routed through Bridge — not separate prompts per step. So the above scenario would produce a single approval request for the plan, not four separate interruptions.
 
-The result is predictable: after the 20th approval in a day, the user stops reading them and clicks "Approve" reflexively. This is the exact same failure mode as cookie consent banners, UAC prompts in Windows Vista, and every other security-through-interruption pattern. Sentinel Memory mitigates this over time (previously approved actions are auto-approved), but the first-week experience will be brutal.
+However, even one approval per plan adds up. A user who issues 10 action-requiring commands per day sees 10 approval prompts in their first week (before Sentinel Memory accumulates precedents). The result is predictable: approval fatigue sets in. Sentinel Memory mitigates this over time (previously approved actions are auto-approved), and fast-path queries skip Sentinel entirely, but the first-week experience of a power user will still feel heavy.
 
 ### What Breaks
 
-- **Approval request at 3 AM**: The user scheduled a task. Sentinel flags it at 3 AM. The task blocks until the user wakes up. Autonomy is gone.
-- **Approval for each step in a plan**: A 5-step plan could generate 5 separate approval prompts, each showing up asynchronously. The user has no way to approve the plan holistically.
-- **No batch approval**: "Approve all file writes for this job" does not exist in the architecture.
-- **No approval context**: The architecture shows Sentinel returning a verdict per step, but how does the user understand what they are approving? "shell.execute: npm install" is clear. "network.post: api.example.com/v2/batch" is not.
+- **Approval request at 3 AM**: The user scheduled a task. Sentinel flags it at 3 AM. In theory, Sentinel Memory (Section 5.3.8) should auto-approve actions with established precedent. But for new scheduled tasks — the first time the pattern runs — the task blocks until the user wakes up. The architecture does not provide a way to pre-approve a scheduled task's plan template at creation time.
+- **Approval without context**: While approval is plan-level (which is good), the architecture does not specify how the plan is presented to the user. Sentinel returns a `ValidationResult` with per-step `StepValidation` entries containing free-form fields, but there is no specification for translating this into a human-readable approval dialog. "shell.execute: npm install" is clear. "network.post: api.example.com/v2/batch" is not.
+- **No trust escalation path**: The architecture has a binary model — either Sentinel auto-approves (via cached decisions or Sentinel Memory), or it escalates to the user. There are no intermediate trust levels (e.g., "auto-approve low/medium risk, prompt only for high/critical") as a user-configurable setting.
+- **First-week friction**: Sentinel Memory is empty on day one. Every action type the user encounters for the first time requires explicit approval. The architecture does not describe any "seed" mechanism or onboarding flow that pre-populates common approval patterns.
 
-### Recommendation: Tiered Approval with Plan-Level Review
+### Recommendation: Approval UX Design and Trust Tiers
 
-Redesign the approval flow around plan-level review, not step-level interruption:
+The architecture already gets the core model right: approval is plan-level, not step-level (Section 5.3.4). What is missing is the UX layer on top of this model:
 
-**1. Plan Preview**: When a task requires approval, show the entire plan as a single reviewable unit. Present it as a checklist:
+**1. Plan Preview UX**: The architecture routes `NEEDS_USER_APPROVAL` through Bridge but does not specify how Bridge presents this. Design the approval dialog as a human-readable plan summary with a step checklist:
 ```
-Task: Set up a new Node project with testing
+Setting up a new Node project with testing
 
-Scout's Plan:
-  [x] Create directory ~/projects/new-app         (low risk)
-  [x] Initialize npm project (npm init -y)         (needs approval - shell)
-  [x] Install dependencies (vitest, typescript)    (needs approval - shell)
-  [x] Create tsconfig.json                         (low risk)
-  [x] Create initial test file                     (low risk)
+Here's my plan:
+  [✓] Create directory ~/projects/new-app         (low risk)
+  [!] Initialize npm project (npm init -y)         (needs OK - runs a command)
+  [!] Install dependencies (vitest, typescript)    (needs OK - runs a command)
+  [✓] Create tsconfig.json                         (low risk)
+  [✓] Create initial test file                     (low risk)
 
-Sentinel says: 2 steps need your approval (shell commands).
-[Approve All] [Review Details] [Reject]
+2 steps need your approval (terminal commands).
+[Approve Plan] [See Details] [Reject]
 ```
 
-The user approves or rejects the plan, not individual steps. This is how humans think: "Yes, set up the project" not "Yes, run npm init; yes, run npm install; yes, write tsconfig."
+The user approves or rejects the plan as a whole. Sentinel's per-step `StepValidation` entries provide the detail, but the approval action is singular. The architecture supports this; the UX needs to be specified.
 
-**2. Trust Levels**: Introduce three user-selectable trust profiles:
-- **Supervised**: Approve every plan (current default, for new users)
-- **Balanced**: Auto-approve low/medium risk plans; prompt for high/critical (recommended after first week)
+**2. Trust Levels**: Introduce three user-selectable trust profiles that configure Sentinel's escalation behavior:
+- **Supervised**: Prompt for every plan that touches approval-required actions (current implicit default)
+- **Balanced**: Auto-approve plans where all steps are low/medium risk; prompt only for high/critical (recommended after first week)
 - **Autonomous**: Auto-approve everything except critical risk (for experienced users who have built up Sentinel Memory)
 
-Show a one-time onboarding screen explaining these levels. Let the user change anytime.
+This is a UX wrapper around Sentinel's existing policy system (Section 5.3.5). Show a one-time onboarding screen explaining these levels. Let the user change anytime.
 
-**3. Scheduled Task Pre-Approval**: When a user creates a scheduled task, show the plan template and let them pre-approve the entire pattern. "Every time this runs, it will do X, Y, Z. Approve for all future runs?" This prevents 3 AM blocking.
+**3. Scheduled Task Pre-Approval**: When a user creates a scheduled task, show the plan template and let them pre-approve the entire pattern. "Every time this runs, it will do X, Y, Z. Approve for all future runs?" Store this as a Sentinel Memory entry. This prevents the 3 AM blocking problem for new task patterns that haven't yet built up precedent.
 
-**4. Smart Batching**: If Sentinel flags multiple steps in a plan, batch them into a single approval dialog grouped by risk category, not a sequence of individual prompts.
+**4. Sentinel Memory Seeding**: During onboarding, offer common approval bundles: "Allow file operations in workspace? Allow git commands? Allow web searches?" This pre-populates Sentinel Memory so the first-week experience is not a wall of approval prompts.
 
 ---
 
@@ -137,18 +137,18 @@ The architecture mentions "audit trails" and "memory transparency" but does not 
 
 Meridian has a complex internal pipeline: Scout plans, Sentinel validates, Gear executes, Journal reflects. For a technical user, viewing the raw execution plan JSON is feasible. For a non-technical user (and the idea document explicitly targets personal productivity, smart home, creative projects -- not just developers), "Scout produced an execution plan with 5 steps using file-manager Gear" is meaningless jargon.
 
-The architecture uses internal component names (Scout, Sentinel, Journal, Gear, Axis) throughout the UI description. These are charming engineering names. They are terrible UI labels. No user should need to know what "Sentinel" is to approve a file deletion.
+The architecture uses internal component names (Scout, Sentinel, Journal, Gear, Axis) throughout the architecture document. While the Bridge section does not explicitly mandate that these names appear in the UI, it also does not specify an alternative user-facing vocabulary. There is a real risk that implementation will default to using architecture names as UI labels. No user should need to know what "Sentinel" is to approve a file deletion.
 
 ### What Breaks
 
 - **Plan opacity**: Scout's execution plan is structured JSON with fields like `gear`, `action`, `parameters`, `riskLevel`. There is no specification for how this translates to human-readable explanation.
 - **Sentinel reasoning is hidden**: Sentinel returns a verdict with optional free-form reasoning. But where does the user see this? In what format? At what reading level?
 - **Journal reflections are invisible**: The architecture says Journal "reflects" after tasks. The user never sees this happen. They do not know what was learned or why. Memory entries appear silently.
-- **Component jargon in the UI**: "Scout is planning..." "Sentinel is validating..." "Gear is executing..." These mean nothing to a non-developer user.
+- **Component jargon risk**: The architecture does not specify user-facing terminology separate from internal component names. Without explicit guidance, implementation will likely surface "Scout is planning..." "Sentinel is validating..." "Gear is executing..." directly. These would mean nothing to a non-developer user.
 
 ### Recommendation: Human-Readable Narrative Layer
 
-**1. Kill the component names in the UI**: The user should never see "Scout," "Sentinel," "Journal," or "Gear" in the interface. These are internal architecture names. Instead:
+**1. Define user-facing vocabulary**: The user should never see "Scout," "Sentinel," "Journal," or "Gear" in the interface unless a developer/debug mode is enabled. These are internal architecture names. Instead:
 - "Scout is planning" becomes "Figuring out how to do this..."
 - "Sentinel is validating" becomes "Checking safety..."
 - "Awaiting approval" becomes "I need your OK before proceeding"
@@ -354,7 +354,7 @@ Hide on mobile: memory browser, Gear management, system logs, full settings. The
 
 ### The Problem
 
-The architecture lists five notification channels (in-app, browser push, email, Slack, Discord) but provides zero guidance on:
+The architecture describes three notification layers — in-app toast, browser push, and external webhooks (Section 5.5.5) — where the external layer can route to email, Slack, Discord, or other messaging apps via Gear. But it provides zero guidance on:
 - Which events trigger which channel
 - How the user configures preferences
 - How to prevent notification spam
@@ -596,20 +596,20 @@ A single infinite thread makes context-switching impossible. Even ChatGPT has se
 | Priority | Recommendation | Impact |
 |----------|---------------|--------|
 | **P0** | Dual-mode interface (Chat + Mission Control) | Prevents the chat thread from becoming unusable |
-| **P0** | Plan-level approval (not step-level) | Prevents approval fatigue from day one |
+| **P0** | Approval UX design + trust tiers (architecture has plan-level approval; needs UX spec and trust level configuration) | Prevents approval fatigue from day one |
 | **P0** | Mobile-responsive layout | Enables approvals and monitoring from any device |
 | **P0** | Progressive onboarding (5-minute setup) | Eliminates the setup wall for new users |
-| **P1** | Remove component jargon from UI | Makes the system accessible to non-developers |
+| **P1** | Define user-facing vocabulary (separate from architecture names) | Makes the system accessible to non-developers |
 | **P1** | Background task cards with step tracking | Makes long-running tasks comprehensible |
 | **P1** | Notification hierarchy with smart defaults | Prevents notification spam |
 | **P1** | Error communication with step tracker | Makes partial failures understandable |
 | **P1** | Empty states and loading states | Completes the UX for every system state |
+| **P1** | Trust level profiles + Sentinel Memory seeding | Reduces first-week approval fatigue |
 | **P2** | Conversational memory interface | Replaces database browser with natural interaction |
 | **P2** | Dark mode from launch | Matches user expectations for developer/AI tools |
 | **P2** | Multiple conversation threads | Enables context-switching between tasks |
 | **P2** | Keyboard shortcuts / command palette | Matches developer tool expectations |
 | **P2** | PWA support | Near-native mobile experience without a native app |
-| **P3** | Trust level profiles | Simplifies approval configuration |
 | **P3** | Gear review in human language | Makes Journal-generated Gear accessible to non-devs |
 | **P3** | Voice input with transcript confirmation | Prevents voice transcription errors from causing harm |
 | **P3** | Undo semantics for reversible actions | Reduces anxiety about autonomous execution |
@@ -622,7 +622,7 @@ Meridian's architecture is meticulous about the backend: security boundaries, da
 
 It will not. The interface IS the product. The user will never see Axis routing messages, Sentinel's information barrier, or Journal's reflection pipeline. They will see a chat box, some buttons, and hopefully a system that feels simple despite being complex underneath.
 
-The architecture needs a companion document: a UX specification with user journeys, wireframes, and interaction patterns for every state the system can be in. The 60 lines currently dedicated to Bridge should be 600. The interface deserves the same rigor as the security model.
+The architecture needs a companion document: a UX specification with user journeys, wireframes, and interaction patterns for every state the system can be in. The ~80 lines currently dedicated to Bridge should be 600. The interface deserves the same rigor as the security model.
 
 The hardest UX problem Meridian faces is not any single interaction. It is the tension between autonomy and control. Users want the system to "just do things" but also want to feel safe and informed. Every interruption (approval, error, notification) erodes the feeling of autonomy. Every silent action erodes the feeling of control. The interface must walk this line constantly, and the architecture document does not yet acknowledge that this line exists.
 

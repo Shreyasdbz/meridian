@@ -46,7 +46,7 @@ I am sure all of this is important from an engineering standpoint. But as a user
 
 The document itself admits the naming is a metaphor -- "navigation and cartography." That is cute for developers. For me, it is six new vocabulary words I have to learn before I can use my own assistant. Siri has zero vocabulary words. Google Assistant has zero. Even ChatGPT has zero -- I just type or talk.
 
-**The concern**: If the user interface (Bridge, I guess?) is well-designed enough, maybe I never need to know about any of this. But the document does not give me confidence that is the plan. It talks about "Gear management panels," "Sentinel Memory browsers," "job queue sidebars," and "system logs." That sounds like a control room, not an assistant.
+**The concern**: If the user interface (Bridge, I guess?) is well-designed enough, maybe I never need to know about any of this. But the document does not give me confidence that is the plan. It talks about "Gear management," a "memory browser," a "job queue / status sidebar," and "system logs." That sounds like a control room, not an assistant.
 
 ---
 
@@ -66,7 +66,7 @@ I have never created a developer account for anything. I do not know what an API
 
 For comparison: when I set up Alexa, I logged into my Amazon account. Done. When I use Siri, it just works -- no account needed. When I signed up for ChatGPT, I made one account and picked a plan. Simple.
 
-Meridian's setup requires me to become a customer of *two different AI companies* (one for Scout, one for Sentinel, since the document recommends different providers for security), manage two separate API keys, understand billing for both, and configure everything in a TOML file (I do not know what TOML is).
+The document's "High security" configuration recommends using *two different AI companies* (one for Scout, one for Sentinel). To be fair, it also offers a "Balanced" option (same company, different model) and a "Budget" option (same model for both) — so a single API key could work. But even the simplest path requires me to create one developer account, get one API key, and configure it. The document mentions a first-run setup wizard and that some settings are adjustable through the web UI, but it is not clear whether API key entry is one of those settings or whether I need to edit a TOML configuration file (I do not know what TOML is).
 
 The document mentions "Ollama" for running local models, which would avoid the API key problem. But then I need to install *another piece of software*, download AI models, and hope my hardware can run them. The document targets a Raspberry Pi with 4-8 GB of RAM. I do not think a local AI model runs well on that.
 
@@ -86,7 +86,7 @@ Let me walk through what happens when I say "email John about dinner Friday":
 6. I have to open the UI and approve it
 7. Only *then* does it actually send the email
 
-I asked for **one thing** -- send an email -- and I got interrupted at least once with a permission dialog. If the email involves a network POST request (it does), that is another approval according to the default policies. If it needs to access my email credentials, that is logged and potentially another checkpoint.
+I asked for **one thing** -- send an email -- and I got interrupted with a permission dialog. Sentinel reviews the entire plan at once (not step-by-step), so it is likely one approval prompt rather than a cascade. But it is still a full interruption for something I explicitly asked the system to do. Credential access is logged, which is fine, but the overall flow for a simple email feels heavy.
 
 This is not an assistant. This is a paranoid bureaucrat.
 
@@ -108,13 +108,13 @@ The document mentions:
 
 But it never says what normal usage actually costs. Not even a ballpark.
 
-Let me try to piece it together. Every time I ask Meridian to *do something* (not just chat), it makes at least two AI API calls -- one for Scout (the planner) and one for Sentinel (the safety checker). If it also reflects on the task afterward with Journal, that is a third call. If it needed to search its memory first, that might involve embeddings, which could be a fourth.
+Let me try to piece it together. Every time I ask Meridian to *do something* (not just chat), it makes at least two AI API calls -- one for Scout (the planner) and one for Sentinel (the safety checker). If it also reflects on the task afterward with Journal, that is a third call. (Memory search uses embeddings, but the default configuration runs those locally, so that part at least does not cost money.)
 
-So a single "send an email" request could be 3-4 API calls. If I use Meridian 20 times a day for real tasks, that is 60-80 API calls. At current Claude or GPT-4 pricing, I have no idea what that costs, but the document helpfully sets the default daily limit at $5, which suggests the developers expect it could easily cost more than that.
+The document describes several cost-saving mechanisms: simple conversations skip Sentinel entirely ("fast path"), Sentinel Memory auto-approves previously approved actions, simple tasks skip Journal reflection, and Scout can use a cheaper model for straightforward operations. So not every interaction incurs 2-3 API calls — some are just one.
 
-$5/day is $150/month. ChatGPT Pro is $20/month. Claude Pro is $20/month. Both of those give me unlimited conversation, and I do not have to run a server or manage API keys.
+Still, for tasks that go through the full pipeline, that is 2-3 external API calls per request. If I use Meridian 20 times a day for real tasks, that could be 40-60 API calls. At current Claude or GPT-4 pricing, I have no idea what that costs. The document sets a default daily *safety cap* of $5 — that is a limit, not an estimate of expected spending, but the fact that they felt the need for a $5 cap suggests costs could meaningfully add up.
 
-Even if real-world costs are lower -- say $1-2/day for moderate use -- that is $30-60/month for something that requires dramatically more effort to set up and maintain. The value proposition makes no sense from a cost perspective unless privacy is worth that premium to me (and I will get to the privacy issue later).
+Even if real-world costs are modest — say $1-2/day for moderate use — that is $30-60/month for something that requires dramatically more effort to set up and maintain. ChatGPT Plus is $20/month. Claude Pro is $20/month. Both of those give me unlimited conversation, and I do not have to run a server or manage API keys. The value proposition makes no sense from a cost perspective unless privacy is worth that premium to me (and I will get to the privacy issue later).
 
 **What I need**: An honest cost calculator. "If you use Meridian for X tasks per day, expect to pay approximately $Y per month in API costs." Right now I am flying completely blind.
 
@@ -129,7 +129,7 @@ The built-in capabilities ("Gear") that ship with Meridian are:
 | file-manager | Manage files in a workspace folder |
 | web-search | Search the web |
 | web-fetch | Fetch web pages |
-| shell | Run computer commands (requires approval every time) |
+| shell | Run computer commands (requires approval by default; auto-approved for 24 hours after first approval of a given command pattern) |
 | scheduler | Set up recurring tasks |
 | notification | Send me notifications |
 
@@ -152,7 +152,7 @@ The document's idea page talks about "managing calendars, drafting emails, autom
 
 So what I am actually getting out of the box is a very expensive web search tool and a file manager with an AI chatbot bolted on. I already have a web browser and a file manager. Why would I go through all the trouble of setting up Meridian for this?
 
-The idea that Journal will "learn" to build new capabilities over time is the most exciting part of the whole document. But it is also the part I trust the least. The system is supposed to notice patterns in my requests, realize it needs a new plugin, write the code for that plugin, test it, and present it to me for review. That sounds amazing. It also sounds like it is years away from working reliably, if it ever does.
+The idea that Journal will "learn" to build new capabilities over time is the most exciting part of the whole document. But it is also the part I trust the least. To be fair, the architecture does describe a concrete pipeline for this: after a task completes, an LLM analyzes what happened, decides if a reusable pattern exists, generates the plugin code and a permission manifest, and places it in a draft folder for me to review before it becomes active. That is a real design, not handwaving. But "an LLM writes code, and I review it" still requires me to evaluate code I cannot read. And the reliability of LLM-generated code for real-world tasks is something I would need to see to believe.
 
 ---
 
@@ -168,9 +168,9 @@ How is that more private than just using ChatGPT directly? With ChatGPT, my data
 
 The document mentions "minimum context principle" -- only the data needed for the current task is sent. That is better than sending everything, I suppose. And it mentions that you can run local AI models through Ollama for "fully offline, zero-data-sharing operation." But as I mentioned earlier, local models on a Raspberry Pi sounds like a fantasy, and running capable local models on any hardware requires expensive equipment and technical expertise.
 
-For the realistic scenario -- using cloud AI providers -- the privacy benefit boils down to: "We store your conversation history locally instead of on ChatGPT's servers, but we still send your requests to an AI company." That is a marginal improvement, not the revolutionary privacy story the document is selling.
+For the realistic scenario -- using cloud AI providers -- the privacy benefit boils down to: "We store your conversation history locally instead of on ChatGPT's servers, but we still send your requests to an AI company." That is not nothing, but it is not the revolutionary privacy story the document is selling.
 
-**To be fair**: There is a real privacy benefit in that Meridian does not have its own data collection. There is no company behind Meridian harvesting my usage data for ad targeting or model training. My data sits on my device and I control it. That matters. But the document oversells this when the AI companies on the other end of those API calls may very well be retaining my data according to their own policies.
+**To be fair**: There are real privacy benefits beyond just local storage. Meridian sends only the minimum context needed for each task, not the entire conversation history — so the AI company sees less of my data per request than ChatGPT sees in a running conversation. The system strips personal information (emails, phone numbers, addresses) from long-term memories before storing them. I can see exactly what was sent to AI providers via the audit log. And there is no company behind Meridian harvesting my usage data for ad targeting or model training — my data sits on my device and I control it. Those are meaningful differences. But the AI companies on the other end of those API calls may very well be retaining my data according to their own policies, and the document does not address that gap.
 
 ---
 
@@ -214,7 +214,7 @@ When I tell Siri to set a timer, it works. Every time. Instantly. Even without i
 
 Meridian depends on external AI services being available, my home device being running, my internet connection being stable, multiple databases being uncorrupted, and sandboxes working correctly. Any one of those failing means my assistant either cannot do what I asked or enters some kind of limping mode where it queues my request and hopes things get better.
 
-I am not asking for perfection. But "set a reminder" should not depend on an API call to a company in San Francisco, routed through a safety validator that uses a different API call to a company in another city, only to put an entry in a local database. That is a Rube Goldberg machine for a task my phone handles in milliseconds.
+I am not asking for perfection. But "set a reminder" should not depend on an API call to an AI company, routed through a safety validator that makes another API call (potentially to the same provider, but still another round-trip), only to put an entry in a local database. That is a Rube Goldberg machine for a task my phone handles in milliseconds.
 
 ---
 
@@ -231,7 +231,7 @@ The document targets "Raspberry Pi, Mac Mini, VPS" as deployment environments. L
 - I need to monitor disk space, memory usage, and system health
 - If something breaks, I need to debug it using "job inspectors," "replay mode," and "dry runs"
 
-This is not a personal assistant. This is a personal server administration hobby. I already have a full-time job. I do not want another one that involves monitoring Prometheus metrics and checking SQLite integrity.
+This is not a personal assistant. This is a personal server administration hobby. I already have a full-time job. I do not want another one that involves checking SQLite integrity and debugging sandbox failures. (The document does mention Prometheus-style metrics, but to be fair, those are opt-in — regular users would not need to touch them. The system does monitor its own disk space and memory automatically.)
 
 The document mentions a "setup wizard" for first-run authentication. Great start. But that is the only mention of guided setup in the entire 2,077 lines. Everything else assumes I am comfortable with configuration files, command-line tools, and Docker.
 
@@ -241,20 +241,20 @@ The document mentions a "setup wizard" for first-run authentication. Great start
 
 Let me lay out the comparison honestly:
 
-| | ChatGPT Pro ($20/mo) | Claude Pro ($20/mo) | Meridian (self-hosted) |
+| | ChatGPT Plus ($20/mo) | Claude Pro ($20/mo) | Meridian (self-hosted) |
 |---|---|---|---|
 | Setup time | 2 minutes | 2 minutes | Hours to days (if I can figure it out at all) |
 | Technical skill needed | None | None | Significant |
-| Works on my phone | Yes (app) | Yes (app) | Unclear -- web-only, no mobile app mentioned |
-| Voice interaction | Yes | Limited | Barely |
+| Works on my phone | Yes (native app) | Yes (native app) | Yes via mobile browser, but no native app — no push notifications, no home screen integration |
+| Voice interaction | Yes | Limited | Barely (voice input only, no spoken responses, no wake word) |
 | Runs when I travel | Yes | Yes | Only if my home server stays on |
 | Updates | Automatic | Automatic | Manual |
-| Monthly cost | $20 flat | $20 flat | $30-150+ in API fees, plus electricity, plus my time |
+| Monthly cost | $20 flat | $20 flat | Unclear — likely $30-60/month for moderate use in API fees, plus electricity, plus my time |
 | Can send emails | Via plugins/GPTs | No | Not without extra Gear I cannot build |
 | Can control smart home | Via plugins | No | Not out of the box |
 | Learns my preferences | Somewhat | Somewhat | Yes, in theory -- this is the big differentiator |
-| My data stays local | No | No | Partially (stored locally, but sent to APIs) |
-| Runs if internet is down | No | No | Barely |
+| My data stays local | No | No | Stored locally, but task data sent to APIs per request (with minimum-context principle) |
+| Runs if internet is down | No | No | Only if local LLMs are configured (Ollama); otherwise queues jobs but cannot execute |
 
 The only areas where Meridian clearly wins are "data stored locally" and "learns and improves over time." The learning part is the genuinely compelling feature -- the idea that Meridian gets better the more I use it, builds custom tools for my specific needs, and becomes uniquely mine. That is something ChatGPT and Claude do not really do.
 

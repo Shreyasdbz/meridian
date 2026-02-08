@@ -3,7 +3,7 @@
 > **Reviewer**: Principal Performance Engineer
 > **Document Reviewed**: `docs/architecture.md` v1.2 + `docs/idea.md`
 > **Date**: 2026-02-07
-> **Verdict**: The architecture is thoughtfully designed from a security and capability perspective. From a performance perspective on the stated primary target (Raspberry Pi 4), it ranges from optimistic to infeasible without significant rework. This review catalogs every performance concern I found, rated by severity, with specific numbers wherever possible.
+> **Verdict**: The architecture is thoughtfully designed from a security and capability perspective. From a performance perspective on the stated primary target (Raspberry Pi 4), the system is feasible at baseline but the default configuration (local embeddings + concurrent Gear) will require careful tuning to avoid memory pressure. Key areas need design-phase attention: SQLite event loop blocking, sandboxing mechanism clarity, and embedded device memory budgeting. This review catalogs every performance concern I found, rated by severity, with specific numbers wherever possible.
 
 ---
 
@@ -21,9 +21,9 @@
 
 ## 1. Raspberry Pi Reality Check: Memory Budget
 
-**Severity: P0 - BLOCKER (on 4GB Pi) / P1 - CRITICAL (on 8GB Pi)**
+**Severity: P1 - CRITICAL (on 4GB Pi) / P2 - SERIOUS (on 8GB Pi)**
 
-A Raspberry Pi 4 with 4GB RAM is stated as the primary target. Let me add up what Meridian actually needs to run simultaneously.
+A Raspberry Pi 4 with 4GB RAM is stated as the primary target. The system is feasible at idle and under light load, but the default configuration (local embeddings via Ollama + concurrent Gear execution) can push memory to dangerous levels. Let me add up what Meridian actually needs to run simultaneously.
 
 ### Memory Budget Estimate
 
@@ -31,12 +31,12 @@ A Raspberry Pi 4 with 4GB RAM is stated as the primary target. Let me add up wha
 |-----------|--------------|-------|
 | Node.js runtime (V8 heap + baseline) | 80-120 MB | Node.js 20 baseline with loaded modules. V8 starts with a 4MB initial heap but the old generation will grow. |
 | Fastify HTTP server + routes | 15-25 MB | Fastify is lean, but loaded with schema validation, plugins, session handling. |
-| WebSocket server (`ws`) | 5-10 MB per connection | Each WS connection holds buffers. Even one connection with active streaming adds up. |
+| WebSocket server (`ws`) | 0.5-2 MB per connection | `ws` is one of the leanest WebSocket libraries. Each connection holds send/receive buffers; with active streaming a single connection may reach the upper end. |
 | React SPA build artifacts (Vite dev server or served static) | 0 MB at runtime (static files) | Good: static assets are just served from disk. No SSR cost. |
 | SQLite via `better-sqlite3` (5 databases) | 50-100 MB | Each database needs page cache. Default page cache is 2000 pages x 4KB = 8MB per database. Five databases = 40MB minimum. WAL files add more. FTS5 indexes add segment merge buffers. |
 | `sqlite-vec` extension loaded | 10-20 MB | The extension itself plus working memory for vector operations. |
 | `isolated-vm` per Gear execution | **100-150 MB per isolate** | This is the killer. Each V8 isolate has its own heap. Even with `memoryLimit`, the V8 isolate infrastructure itself consumes 30-50MB before your code runs. See detailed analysis in Section 3. |
-| `tiktoken` WASM module | 15-30 MB | The BPE token tables for cl100k_base alone are ~4MB. The WASM runtime adds overhead. On ARM64, performance is further degraded. |
+| `tiktoken` WASM module | 5-15 MB | The BPE token tables for cl100k_base are ~4MB. WASM runtime overhead is modest. Native-binding variants (e.g., `@anthropic-ai/tiktoken`) are leaner than pure-WASM. |
 | Ollama running `nomic-embed-text` | **500-800 MB** | This is a 137M parameter model. Even quantized (Q4), it needs ~300MB for weights plus inference buffers. Ollama daemon itself adds 50-100MB. |
 | LLM provider SDK connections (Anthropic, OpenAI) | 10-20 MB | HTTP/2 connections, TLS state, streaming buffers. |
 | Structured logging + audit writes | 5-10 MB | Buffered writes, JSON serialization. |
@@ -46,19 +46,19 @@ A Raspberry Pi 4 with 4GB RAM is stated as the primary target. Let me add up wha
 
 | Scenario | Estimated Total | Available on 4GB Pi | Verdict |
 |----------|----------------|---------------------|---------|
-| Idle (no Gear, no embeddings running) | ~800 MB - 1.2 GB | ~3.5 GB usable | Tight but feasible |
-| One Gear isolate executing | ~1.0 - 1.5 GB | ~3.5 GB usable | Feasible with care |
-| Two Gear isolates + Ollama embedding | **~2.0 - 2.8 GB** | ~3.5 GB usable | Dangerously close to OOM |
-| Two Gear isolates + Ollama + Journal reflection LLM call streaming + WebSocket streaming | **~2.5 - 3.2 GB** | ~3.5 GB usable | **Will OOM-kill under pressure** |
+| Idle (no Gear, no embeddings running) | ~600 MB - 950 MB | ~3.5 GB usable | Feasible with headroom |
+| One Gear isolate executing | ~750 MB - 1.2 GB | ~3.5 GB usable | Feasible with care |
+| Two Gear isolates + Ollama embedding | **~1.5 - 2.4 GB** | ~3.5 GB usable | Tight; depends on Gear complexity |
+| Two Gear isolates + Ollama + Journal reflection LLM call streaming + WebSocket streaming | **~2.0 - 2.8 GB** | ~3.5 GB usable | **Dangerously close to OOM under sustained pressure** |
 
-On a 4GB Pi, running Ollama for local embeddings simultaneously with Gear execution is not practically feasible. The architecture document mentions `nomic-embed-text` at 80MB via Ollama in section 14, but this number appears to refer to the model file size on disk, not the runtime memory cost. The actual inference memory for a 137M-parameter transformer model is 500MB+ even quantized.
+On a 4GB Pi, running Ollama for local embeddings simultaneously with Gear execution is not practically feasible. The config example in section 10.4 defaults to `nomic-embed-text` for embeddings. Section 11.2 does suggest a lighter alternative — `all-MiniLM-L6-v2` at 80MB — but that 80MB figure refers to the model file size on disk, not runtime memory. Even `all-MiniLM-L6-v2` (22M parameters) requires 150-250MB at inference time, and `nomic-embed-text` (137M parameters) requires 500MB+ even quantized.
 
 **On an 8GB Pi**, the picture improves meaningfully but the margin is still thin if Ollama is running local models for both embeddings and (as mentioned in section 16.4) local LLM inference for Scout/Sentinel.
 
 ### Recommendations
 
 1. **Make Ollama a "not simultaneously" service**: Embed on demand, then unload the model. Ollama supports `OLLAMA_KEEP_ALIVE=0` to unload immediately after inference. Document this as the Pi configuration.
-2. **Use API-based embeddings as the Pi default**, not local. The doc says local is the default (`embedding_provider = "local"`) -- flip this for Pi deployments.
+2. **Use API-based embeddings as the Pi default**, not local. The config example (section 10.4) shows `embedding_provider = "local"` as the general default. Section 11.2 acknowledges the Pi constraint by suggesting `all-MiniLM-L6-v2` as a lighter alternative, but even that model requires 150-250MB at runtime. For 4GB Pi, API-based embeddings should be the documented default.
 3. **Set explicit `--max-old-space-size`** for the Node.js process. On a 4GB Pi, cap it at 512MB. On 8GB, cap at 1GB. The doc never mentions V8 heap limits.
 4. **Publish a tested memory budget** with actual measured numbers before claiming Pi 4 support. The current "Raspberry Pi Optimizations" section (11.2) is dangerously hand-wavy.
 
@@ -125,7 +125,9 @@ At 10,000 vectors, that is 30MB. An exhaustive kNN scan of 30MB from an SD card 
 
 ### Per-Isolate Memory Cost
 
-The architecture specifies `isolated-vm` for Gear sandboxing. Here are real-world numbers from production use of `isolated-vm` (v5.x on Node.js 20):
+The tech stack table (section 14.1) lists `isolated-vm` + seccomp/sandbox-exec for process sandboxing. However, section 5.6.3 describes two sandboxing levels: **Level 1 (Process Isolation)** — the stated default for lightweight deployments like Raspberry Pi — uses "separate child processes with restricted permissions" + seccomp, while **Level 2 (Container Isolation)** uses Docker. There is an architectural ambiguity: the tech stack names `isolated-vm`, but Level 1's description reads more like `child_process.fork()` with OS-level restrictions. This matters because the performance profiles differ significantly. The analysis below assumes `isolated-vm` is used (per the tech stack), but if Level 1 is implemented as child processes, the overhead profile changes (see Recommendation 4).
+
+Here are real-world numbers from production use of `isolated-vm` (v5.x on Node.js 20):
 
 | Metric | Value | Source |
 |--------|-------|--------|
@@ -162,7 +164,7 @@ The architecture says "Worker Pool: default 2 on Raspberry Pi". This is reasonab
 1. **Cap concurrent isolates at 2 on the Pi**, independent of the worker pool size. If a job has 3 parallel steps, serialize them on the Pi.
 2. **Pool and reuse isolates** instead of creating/destroying per execution. Keep a warm pool of 2 isolates and recycle them between Gear executions. This eliminates the 135-360ms cold start. The security implications need analysis (residual state between executions), but `isolated-vm` supports `dispose()` to reset state.
 3. **Measure and publish actual isolate overhead** on ARM64. The numbers I have given are estimates extrapolated from x86 benchmarks with ARM64 slowdown factors. Real measurement on a Pi 4 is essential.
-4. **Consider whether `isolated-vm` is the right choice at all for Pi deployments**. An alternative is process-level sandboxing (already described as "Level 1" in section 5.6.3) with `child_process.fork()` + seccomp. Child processes on Linux can share memory pages via COW, and the per-process overhead on Linux is lower than a V8 isolate (~10-15MB for a lightweight Node.js child process). The doc positions `isolated-vm` as the default and containers as the alternative, but process isolation is a better default for Pi.
+4. **Clarify the relationship between `isolated-vm` and Level 1 process isolation.** Section 5.6.3 already describes Level 1 (process isolation via child processes + seccomp) as the default for Pi, but the tech stack table lists `isolated-vm`. If Level 1 is implemented as `child_process.fork()` + seccomp rather than `isolated-vm` V8 isolates, the per-sandbox overhead drops significantly (~10-15MB per child process vs. 30-50MB per isolate, and child processes on Linux share memory pages via COW). The architecture should explicitly state which mechanism Level 1 uses, as this is the single biggest variable in the Pi memory budget for Gear execution.
 
 ---
 
@@ -198,7 +200,7 @@ The doc mentions `nomic-embed-text` via Ollama for local embeddings. This is a 1
 
 For every user message on the full path, Journal needs to embed the query for semantic search. That is 200-500ms added to the critical path before Scout even starts planning.
 
-Section 11.2 mentions `all-MiniLM-L6-v2` (22M parameters, ~80MB) as an alternative for Pi. This is more realistic:
+Credit: the architecture already anticipates this in section 11.2 by suggesting `all-MiniLM-L6-v2` (22M parameters, ~80MB on disk) as a Pi-specific alternative. This is more realistic:
 
 | Metric | Value on Pi 4 |
 |--------|---------------|
@@ -378,7 +380,7 @@ Node.js has one event loop. Everything that is not explicitly offloaded to `work
 2. **WebSocket write** (Bridge): Sending each token chunk to the client.
 3. **SQLite writes** (`better-sqlite3` is synchronous): Job status updates, audit log entries.
 4. **JSON serialization**: Execution plans, validation results, message formatting.
-5. **HMAC-SHA256 computation**: Signing every inter-component message.
+5. **HMAC-SHA256 computation**: Signing every inter-component message. *(Note: individual HMAC-SHA256 operations on small payloads complete in microseconds and are not a meaningful blocking concern by themselves — they are listed here for completeness, not as a primary bottleneck.)*
 6. **`tiktoken` tokenization**: If counting tokens during streaming.
 7. **Gear isolate communication**: If a Gear is running, `isolated-vm` transfers data between the main isolate and the Gear isolate synchronously when using `copySync` or `applySync`.
 
@@ -540,13 +542,13 @@ The doc says "Connection pooling: A single persistent connection per LLM provide
 
 ### 12.5 Missing: Request Deadline Propagation
 
-The doc mentions timeouts per step (`timeoutMs` default 300000 -- 5 minutes). But there is no concept of an overall request deadline that propagates through the system. If Scout takes 10 seconds, Sentinel takes 5 seconds, and the Gear timeout is 5 minutes, the user could wait up to ~5 minutes 15 seconds with no feedback on progress.
+The doc has per-step timeouts (`timeoutMs` default 300000 — 5 minutes) and a per-job `timeout_ms` field in the SQL schema (section 8.3). However, there is no concept of a **propagating** deadline that is decremented as the job passes through each component. If Scout takes 10 seconds, Sentinel takes 5 seconds, and the Gear timeout is 5 minutes, the user could wait up to ~5 minutes 15 seconds with no feedback on progress, even though the job-level timeout may have expired during the Gear phase without earlier phases counting against it.
 
 **Needed**: A top-level `deadlineMs` on the Job that is decremented as it passes through each component. If 80% of the deadline has elapsed, Axis can preemptively notify the user that the task is taking longer than expected.
 
 ### 12.6 Missing: Swap Configuration Guidance
 
-On a Pi 4 with 4GB RAM, the default Raspbian swap is 100MB (via dphys-swapfile). This is absurdly small for Meridian's workload. If memory pressure hits, the system will OOM-kill processes rather than swap.
+On a Pi 4 with 4GB RAM, the default Raspberry Pi OS swap is 200MB (via dphys-swapfile; older Raspbian versions defaulted to 100MB). Either way, this is too small for Meridian's workload. If memory pressure hits, the system will OOM-kill processes rather than swap.
 
 **Needed**: Installation documentation should recommend:
 - 2GB swap file on SSD (not SD card -- swap on SD card will destroy the card).
@@ -558,9 +560,9 @@ On a Pi 4 with 4GB RAM, the default Raspbian swap is 100MB (via dphys-swapfile).
 
 | # | Finding | Severity | Effort to Fix |
 |---|---------|----------|--------------|
-| 1 | Memory budget exceeds 4GB Pi capacity with local embeddings + Gear | P0 | Medium (default to API embeddings on Pi) |
+| 1 | Memory budget tight on 4GB Pi with local embeddings + concurrent Gear | P1 | Medium (default to API embeddings on Pi) |
 | 2 | SD card I/O is a bottleneck for 5 WAL databases + FTS5 | P1 | Low (recommend SSD, tune checkpoint) |
-| 3 | `isolated-vm` per-isolate overhead too high for Pi | P1 | High (isolate pooling or switch to process sandbox) |
+| 3 | `isolated-vm` per-isolate overhead too high for Pi (if used; Level 1 describes child processes) | P1 | Medium (clarify sandboxing mechanism; if isolated-vm, pool isolates) |
 | 4 | Synchronous `better-sqlite3` blocks event loop during streaming | P1 | High (move to worker thread) |
 | 5 | Missing GC tuning, memory budgets, profiling strategy | P1 | Medium (add config + documentation) |
 | 6 | sqlite-vec brute-force search degrades at scale | P2 | Medium (cache, dimensionality reduction) |

@@ -10,7 +10,7 @@
 
 ## Executive Summary
 
-Meridian's architecture borrows the vocabulary of distributed systems -- message passing, event buses, worker pools, circuit breakers, backpressure, crash recovery -- but applies it to what is fundamentally a single-process, single-user, single-machine application backed by SQLite. This creates a tension that runs through the entire design: the document pays the complexity cost of distributed systems patterns without actually getting the benefits those patterns were invented for. Worse, by invoking these concepts loosely, the architecture creates a false sense of reliability. The hard problems -- idempotency, exactly-once delivery, ordered execution, crash recovery with side effects -- are either hand-waved or not addressed at all.
+Meridian's architecture borrows the vocabulary of distributed systems -- message passing, event buses, worker pools, circuit breakers, backpressure, crash recovery -- but applies it to what is fundamentally a single-user, single-machine application backed by SQLite. While not strictly single-process (Gear explicitly runs in separate child processes or containers per Section 5.6.3), the core components -- Axis, Scout, Sentinel, Journal, Bridge -- share a single Node.js process. This creates a tension: the document pays the complexity cost of distributed systems patterns for the internal components without actually getting the benefits those patterns were invented for, while the legitimate cross-process boundary (Gear) could benefit from more of this rigor. The hard problems -- idempotency, exactly-once delivery, ordered execution, crash recovery with side effects -- are either hand-waved or not addressed at all.
 
 The architecture is not broken. Most of these issues will be invisible in the happy path. But the failure modes described below are real, and they will surface the moment the system encounters LLM API flakiness, process crashes during execution, or concurrent job processing. For a system that executes autonomous actions -- sending emails, deleting files, running shell commands -- these failure modes are not abstract concerns. They are the difference between "my assistant sent one email" and "my assistant sent three copies of the same email."
 
@@ -32,7 +32,7 @@ The architecture is not broken. Most of these issues will be invisible in the ha
 
 ### The Reality
 
-Meridian is a single Node.js process. "Message passing through Axis" is a function call to a router that dispatches to other in-process functions. The `AxisMessage` type with its `from`, `to`, `type`, and HMAC-SHA256 `signature` field (Section 9.1) is an in-process data structure being signed and verified within the same trust boundary.
+Meridian's core components (Axis, Scout, Sentinel, Journal, Bridge) run in a single Node.js process, while Gear runs in separate child processes or containers (Section 5.6.3). For the core components, "message passing through Axis" is a function call to a router that dispatches to other in-process functions. The `AxisMessage` type with its `from`, `to`, `type`, and HMAC-SHA256 `signature` field (Section 9.1) is -- for these in-process components -- a data structure being signed and verified within the same trust boundary.
 
 Let me be precise about what this buys versus what it costs:
 
@@ -41,19 +41,19 @@ Let me be precise about what this buys versus what it costs:
 - Testability: Components can be mocked by replacing their message handler. Also useful.
 - Future extensibility: If Meridian ever goes multi-process, the abstraction is in place.
 
-**What it costs:**
-- Performance: HMAC-SHA256 signing and verification on every in-process message is pure overhead. In a single process, the "from" field cannot be spoofed because there is no untrusted sender. The signing key is in the same memory space as every component.
+**What it costs (for in-process components):**
+- Performance: HMAC-SHA256 signing and verification on every in-process message is conceptually unnecessary overhead, though in practice the cost is measured in microseconds per message -- negligible compared to LLM API calls that take 2-30 seconds. The "from" field cannot be spoofed within the process because there is no untrusted sender.
 - Complexity: Every interaction requires serialization, routing, deserialization. Direct function calls with TypeScript's type system would provide the same type safety with zero overhead.
 - Debuggability: Stack traces through a message router are worse than direct call stacks. When Scout calls Journal for context retrieval, a direct function call gives you a clean stack trace. A message-passing indirection gives you a stack trace that bottlenecks through the Axis router, making it harder to follow the actual logical flow.
-- False security model: HMAC signing of in-process messages creates the illusion of a trust boundary that does not exist. If any component is compromised (e.g., a malicious Gear escapes its sandbox), it has access to the signing key because it is in the same process. The signature provides zero additional security.
+- False security model: HMAC signing of in-process messages creates the illusion of a trust boundary that does not exist. For Scout, Sentinel, Journal, and Bridge -- all running in the same process -- the signing key is in the same memory space, and the signature provides no additional security against in-process compromise.
 
 ### The Nuance
 
-The one place where message signing has value is Gear. Gear runs in separate processes or containers (Section 5.6.3). Messages between the main process and a sandboxed Gear process do cross a trust boundary, and signing those messages is legitimate. But the architecture applies the same signing ceremony to Scout-to-Axis, Sentinel-to-Axis, and Journal-to-Axis communication, where it is meaningless.
+The one place where message signing has real value is Gear. Gear runs in separate processes or containers (Section 5.6.3). Messages between the main process and a sandboxed Gear process do cross a trust boundary, and signing those messages is legitimate -- the architecture explicitly states that "a compromised Gear cannot impersonate Scout or Sentinel" (Section 6.3), which relies on the signing key being held only by the main process, not shared with Gear sandbox processes. But the architecture applies the same signing ceremony to Scout-to-Axis, Sentinel-to-Axis, and Journal-to-Axis communication, where it is meaningless because these components share the same process and memory space.
 
 ### Recommendation
 
-Separate the internal component API (direct function calls with typed interfaces) from the Gear communication protocol (which legitimately needs message signing across process boundaries). Do not pretend that in-process components are distributed actors. They are not. The TypeScript type system and dependency injection are sufficient for the internal boundaries.
+Separate the internal component API (direct function calls with typed interfaces) from the Gear communication protocol (which legitimately needs message signing across process boundaries). The HMAC signing adds real value for the Gear boundary where the architecture already intends it. For Scout, Sentinel, Journal, and Bridge, the TypeScript type system and dependency injection are sufficient for the internal boundaries.
 
 ---
 
@@ -98,19 +98,20 @@ More critically: what happens if Scout's revision produces a plan that Sentinel 
 
 Section 4.5 step 9 says: "If a step fails, Axis routes back to Scout for replanning using a potentially different approach or Gear." This implies `executing -> planning`. But this transition is never explicitly defined, and it creates a dangerous pattern: a job can oscillate between `planning`, `validating`, and `executing` indefinitely if Scout keeps replanning and individual steps keep failing.
 
-What bounds this? The document mentions `maxAttempts` on steps (Section 5.1.5) but not on the plan-validate-execute cycle as a whole. A job could theoretically produce 3 plans, each with 3 step retries, going through Sentinel each time -- that is 9 Sentinel LLM calls and 9 Gear executions for a single user message. With no global bound.
+What bounds this? The document mentions `maxAttempts` on steps (Section 5.1.5) and a max of 3 Sentinel revision iterations per plan cycle (Section 5.3.4), but not on the plan-validate-execute cycle as a whole. A job could theoretically go through N replan cycles, each with up to 3 Sentinel revision iterations and up to 3 step retries per execution. With no global bound on the number of replan cycles, this can compound significantly for a single user message.
 
-### Problem 3: Concurrent State Updates
+(Note: the architecture also has an inconsistency here -- Section 4.5 step 6 lists three Sentinel verdicts (`APPROVED`, `REJECTED`, `NEEDS_USER_APPROVAL`) while Section 5.3.3 lists four (adding `needs_revision`). This should be reconciled.)
 
-SQLite in WAL mode allows concurrent reads and a single writer (Section 8.1). But Axis has configurable worker pools with 2-8 concurrent workers (Section 5.1.3). When two workers attempt to update the same job's status simultaneously -- for example, one completing a step while another times it out -- what happens?
+### Problem 3: State Update Ordering
 
-SQLite's single-writer model means one will block. But the architecture does not specify:
-- Whether status updates use transactions
-- Whether there is optimistic concurrency control (e.g., `UPDATE jobs SET status = 'completed' WHERE id = ? AND status = 'executing'`)
-- What happens when a status update fails because the job is already in a terminal state
-- Whether step-level parallelism (Section 5.1.3) can cause two step results to arrive simultaneously for the same job
+Since the core components share a single Node.js event loop, two logical workers cannot literally execute SQLite operations simultaneously -- `better-sqlite3` calls are synchronous and the event loop is single-threaded. However, the problem manifests differently: parallel Gear processes (which run out-of-process) can complete near-simultaneously and send their results back to Axis. These results arrive as events on the event loop and are processed sequentially, but the order depends on which Gear process finishes first, which is non-deterministic.
 
-This is not a theoretical concern. With parallel steps, two Gear processes can complete near-simultaneously and both attempt to update the job. Without explicit concurrency control, the second update either silently overwrites the first (data loss) or creates an inconsistent state.
+The architecture does not specify:
+- Whether status updates use optimistic concurrency control (e.g., `UPDATE jobs SET status = 'completed' WHERE id = ? AND status = 'executing'`)
+- What happens when a status update is attempted but the job is already in a terminal state (e.g., timed out while a step was completing)
+- How parallel step results are assembled into the job's `result_json` without interleaving issues
+
+Without explicit state transition guards, a timeout handler and a completion handler could process in an unexpected order, leaving the job in an inconsistent state.
 
 ### Recommendation
 
@@ -176,7 +177,7 @@ Explicitly define the delivery guarantee as at-least-once and design the Gear ex
 
 ### Why This Is Dangerous
 
-This is the single most dangerous line in the architecture document. Resetting `executing` jobs to `pending` means the entire job pipeline -- planning, validation, execution -- runs again. This includes all side effects.
+This is the most consequential design gap in the architecture document. Resetting `executing` jobs to `pending` means the entire job pipeline -- planning, validation, execution -- runs again. This includes all side effects.
 
 The document lists built-in Gear that include (Section 5.6.5):
 - `file-manager`: Write and organize files (overwriting is usually safe, but delete-then-write is not)
@@ -243,7 +244,7 @@ A circuit breaker has three states: closed (normal), open (failing, requests rej
 
 ### The Flaky Gear Problem
 
-Consider a web-fetch Gear that works 80% of the time but fails 20% of the time due to target site flakiness. With 3 consecutive failures as the trigger, the circuit will open roughly every 125 requests (0.2^3 probability of 3 consecutive failures = 0.8%, but concentrated during periods of target unavailability). This is too aggressive for Gear that interact with unreliable external services.
+Consider a web-fetch Gear that works 80% of the time but fails 20% of the time due to target site flakiness. With 3 consecutive failures as the trigger and assuming independent failure probability, the expected number of requests before seeing 3 consecutive failures is roughly 155 (the recurrence for consecutive runs is more complex than simply 1/0.2^3). In practice, web service failures are correlated -- the service is either up or down -- so during periods of target unavailability, 3 consecutive failures will occur immediately. This makes the consecutive-failure heuristic too aggressive for Gear that interact with unreliable external services and not aggressive enough to detect sustained outages quickly.
 
 ### Recommendation
 
@@ -287,17 +288,17 @@ Either specify the event bus fully (delivery guarantees, ordering, failure handl
 
 ---
 
-## 7. Concurrency Control: SQLite is Not a Concurrent Queue
+## 7. Concurrency Control: Synchronous I/O on a Single Event Loop
 
 **Severity: High**
 
 ### The Setup
 
-Axis uses a configurable worker pool (2-8 workers per Section 5.1.3) pulling jobs from a SQLite-backed queue. SQLite in WAL mode allows concurrent reads but only a single writer at a time (Section 8.1).
+Axis uses a configurable worker pool (2-8 logical workers per Section 5.1.3) sharing a single Node.js event loop, pulling jobs from a SQLite-backed queue. Because `better-sqlite3` is synchronous, every database operation blocks the event loop.
 
-### Problem 1: Job Assignment Atomicity
+### Problem 1: Job Assignment and Event Loop Blocking
 
-When multiple workers try to claim the next available job, they need an atomic "claim" operation. In PostgreSQL, this is `SELECT ... FOR UPDATE SKIP LOCKED`. In Redis, it is `BRPOPLPUSH`. SQLite has neither.
+When multiple logical workers try to claim the next available job, they need an atomic "claim" operation. In PostgreSQL, this is `SELECT ... FOR UPDATE SKIP LOCKED`. In Redis, it is `BRPOPLPUSH`. SQLite has neither.
 
 The typical SQLite pattern is:
 
@@ -306,7 +307,7 @@ UPDATE jobs SET status = 'planning', worker_id = ?
 WHERE id = (SELECT id FROM jobs WHERE status = 'pending' ORDER BY priority, created_at LIMIT 1);
 ```
 
-This works but requires careful implementation. The subquery and update must be in the same transaction, and SQLite's `BUSY` timeout must be configured correctly to handle write contention from multiple workers. With `better-sqlite3` (which the architecture specifies), all operations are synchronous, which means a worker waiting on a SQLite write lock blocks its entire event loop -- including health checks, WebSocket messages, and timer callbacks.
+An important nuance: since Meridian runs in a single Node.js event loop, "concurrent workers" are logical workers that interleave on the same thread, not OS threads racing for a lock. Two workers cannot literally execute SQLite operations simultaneously. However, `better-sqlite3` (which the architecture specifies) is synchronous, meaning any database operation -- read or write -- blocks the entire event loop. A slow query blocks not just other workers but also health checks, WebSocket messages, and timer callbacks. This is the real concurrency concern: not write-lock contention between simultaneous writers, but event loop starvation from synchronous I/O.
 
 The architecture does not address this. It describes "in-process priority queue backed by SQLite" which suggests the actual queue is in-memory with SQLite as persistence, but this creates the consistency gap described in Section 3.
 
@@ -323,13 +324,13 @@ This means multiple Gear processes can be executing steps of the same job simult
 
 ### Problem 3: `better-sqlite3` is Synchronous
 
-The choice of `better-sqlite3` (Section 14.1) is deliberate -- it provides synchronous, fast access to SQLite. But this means every database operation blocks the Node.js event loop. With concurrent workers, parallel step execution, event handling, and WebSocket streaming all sharing the same event loop, database contention becomes a bottleneck.
+The choice of `better-sqlite3` (Section 14.1) is deliberate -- it provides synchronous, fast access to SQLite. But this means every database operation blocks the Node.js event loop. With logical workers, parallel step execution, event handling, and WebSocket streaming all sharing the same event loop, any slow database operation becomes a system-wide bottleneck.
 
-The watchdog (Section 5.1.5) monitors for event loop blocks >10 seconds. A single slow SQLite write (e.g., writing a large `result_json` blob while another transaction holds the write lock) could trigger the watchdog. The watchdog's response is to "log a warning and trigger a diagnostic dump," which involves... more I/O on the already-blocked event loop.
+The watchdog (Section 5.1.5) monitors for event loop blocks >10 seconds. A slow SQLite operation (e.g., writing a large `result_json` blob or a complex query on a growing table) could trigger the watchdog. Note that the watchdog timer callback cannot fire during a synchronous block -- it fires after the block resolves, detecting the problem after the fact rather than during it. The diagnostic dump then runs on the now-unblocked event loop, so it does not compound the blocking problem, but the detection latency means the watchdog is reactive, not preventive.
 
 ### Recommendation
 
-Define the concurrency control strategy explicitly. For job assignment, use SQLite's atomic UPDATE-with-subquery pattern and handle BUSY errors with retry and jitter. For step-level parallelism, define a coordination protocol (barrier, cancellation policy, result assembly). Consider whether `better-sqlite3`'s synchronous nature is compatible with the concurrency model, or whether database operations should be offloaded to a worker thread.
+Define the concurrency control strategy explicitly. For job assignment, use SQLite's atomic UPDATE-with-subquery pattern within a single synchronous call. For step-level parallelism, define a coordination protocol (barrier, cancellation policy, result assembly). Since all database calls are synchronous on the event loop, consider whether `better-sqlite3`'s blocking nature is acceptable for the expected query latency on target hardware, or whether database operations should be offloaded to a worker thread (via `worker_threads`) to avoid event loop starvation during complex queries.
 
 ---
 
@@ -459,7 +460,7 @@ The architecture has parallel workers (Section 5.1.3) and no mechanism for expre
 
 ### Compounding the Problem
 
-The `parent_id` field in the jobs table (Section 8.3) suggests a parent-child relationship. But it is never described. Is it for sub-jobs created by `GearContext.createSubJob`? Can it express "job B depends on job A"? Is there any dependency resolution in the scheduler?
+The `parent_id` field in the jobs table (Section 8.3) suggests a parent-child relationship. It is implicitly tied to `GearContext.createSubJob` (Section 9.3), which "spawns sub-tasks" that go through the full Axis -> Scout -> Sentinel pipeline. But the relationship is never described in detail -- can `parent_id` express cross-conversation dependencies like "job B depends on job A"? Is there any dependency resolution in the scheduler beyond parent-child?
 
 Scout produces plans with `order` and `parallelGroup` fields (Section 5.2.2), but these are within a single plan for a single job. There is no cross-job ordering mechanism.
 
@@ -605,13 +606,14 @@ The architecture does not address time-sensitive job handling during shutdown/re
 
 **Severity: Low**
 
-The health check (Section 12.3) shows `queue_depth: 3`. The Prometheus metrics (Section 12.2) show `meridian_jobs_total{status}`. But there is no metric for:
+The health check (Section 12.3) shows `queue_depth: 3`. The Prometheus metrics (Section 12.2) show `meridian_jobs_total{status}`. The architecture does include `meridian_llm_latency_seconds{provider,model}` for LLM response latency, which is good. But there is no metric for:
 - Queue wait time (how long jobs sit in `pending` before being picked up)
 - Per-priority queue depth
 - Worker utilization (what percentage of workers are busy vs. idle)
-- LLM API latency percentiles (p50, p95, p99) -- critical for understanding why jobs are slow
 
-Without these metrics, diagnosing throughput issues requires reading logs, which is not scalable even for a single-user system.
+Additionally, it is unspecified whether `meridian_llm_latency_seconds` is a histogram (enabling percentile calculation via `histogram_quantile()`) or a gauge. For diagnosing LLM provider issues, percentiles (p50, p95, p99) are essential and should be explicitly specified as a histogram type.
+
+Without queue-level operational metrics, diagnosing throughput issues requires reading logs, which is not scalable even for a single-user system.
 
 ---
 
@@ -651,17 +653,17 @@ For a single-user, single-process system on low-power hardware, SQLite is an exc
 
 ### Where It Creates Tension
 
-**Concurrent writes under WAL mode**: WAL mode allows concurrent readers with a single writer. With 2-8 workers attempting concurrent status updates, this means write serialization. Each status update acquires the write lock, and `better-sqlite3`'s synchronous nature means the acquiring thread blocks. With 8 workers on a VPS and a busy LLM, write contention is real.
+**Synchronous I/O under WAL mode**: WAL mode allows concurrent readers with a single writer. Since `better-sqlite3` is synchronous and all logical workers share a single event loop, database operations cannot truly execute concurrently. The real issue is not write-lock contention between simultaneous writers, but that any synchronous database operation (read or write) blocks the entire event loop. With 8 logical workers on a VPS and frequent database operations, event loop starvation from synchronous I/O is the primary concern.
 
-**Multiple databases**: The architecture uses 5+ separate SQLite databases (Section 8.2). Each has its own WAL, its own write lock, and its own journal. Cross-database transactions are not atomic (SQLite does not support distributed transactions across databases). If Axis needs to update a job's status in `meridian.db` AND write an audit entry to `audit.db`, these are two separate transactions. A crash between them leaves the databases inconsistent.
+**Multiple databases**: The architecture uses 5+ separate SQLite databases (Section 8.2). Each has its own WAL, its own write lock, and its own journal. SQLite does support atomic transactions across multiple databases via `ATTACH DATABASE`, so cross-database atomicity is technically achievable. However, the architecture's design intent is component isolation -- Sentinel owns `sentinel.db`, Journal owns `journal.db`, Axis owns `meridian.db` -- which implies separate connections per component. If Axis needs to update a job's status in `meridian.db` AND write an audit entry to `audit.db` on a separate connection, these are two separate transactions. A crash between them leaves the databases inconsistent. Whether to use `ATTACH DATABASE` (gaining atomicity, losing isolation) or separate connections (gaining isolation, losing atomicity) is a design decision the architecture should address explicitly.
 
 **Vector search performance**: `sqlite-vec` is a relatively new extension. For semantic search over thousands of memory entries with embedding comparison, the performance characteristics on a Raspberry Pi (ARM64, limited memory) are not well-established. The architecture assumes this will work within acceptable latency but provides no benchmarks or fallback.
 
-**WAL file growth**: Under sustained write load (active job processing, audit logging, memory updates), WAL files can grow large before checkpointing. On an SD card with limited write endurance (Raspberry Pi), this accelerates wear. The architecture mentions disk monitoring but not WAL management.
+**WAL file growth**: SQLite automatically checkpoints when the WAL reaches ~4 MB (1000 pages at default page size), so WAL files are self-limiting under normal operation. However, long-running read transactions can prevent checkpointing, causing the WAL to grow indefinitely. With `better-sqlite3`'s synchronous operations, this is less likely than with async drivers, but a long-running memory retrieval query on `journal.db` could delay checkpointing on that database. On an SD card (Raspberry Pi), accumulated write amplification from frequent small writes is a more realistic concern than unbounded WAL growth. The architecture mentions disk monitoring but not WAL management.
 
 ### Recommendation
 
-Implement WAL checkpoint management (periodic forced checkpoints during idle periods). For cross-database consistency, implement a two-phase approach: write the primary record first, then the audit entry, and handle the case where the audit write fails (retry on next startup). Benchmark `sqlite-vec` on Raspberry Pi hardware with realistic data volumes (1000+ memories, 768-dimension embeddings) and document the results.
+Implement WAL checkpoint management (periodic forced checkpoints during idle periods to reduce write amplification on SD cards). For cross-database consistency, either use `ATTACH DATABASE` for operations that need atomicity (accepting the coupling), or implement a two-phase approach: write the primary record first, then the audit entry, and handle the case where the audit write fails (retry on next startup). Benchmark `sqlite-vec` on Raspberry Pi hardware with realistic data volumes (1000+ memories, 768-dimension embeddings) and document the results.
 
 ---
 
@@ -669,13 +671,13 @@ Implement WAL checkpoint management (periodic forced checkpoints during idle per
 
 | # | Issue | Severity | Effort to Fix |
 |---|-------|----------|---------------|
-| 1 | In-process message signing is security theater | Medium | Low -- remove signing for internal, keep for Gear |
+| 1 | In-process message signing is unnecessary for core components (legitimate for Gear) | Medium | Low -- remove signing for internal, keep for Gear |
 | 2 | Undefined state transitions, unbounded revision loops | High | Medium -- formal state machine + cycle limits |
 | 3 | Queue delivery guarantee unstated, gap between dequeue and commit | Critical | Medium -- define guarantee, implement atomic claim |
 | 4 | Crash recovery retries side effects (duplicate emails, commands) | Critical | High -- step-level checkpointing + idempotency |
 | 5 | Circuit breaker has no reset logic | Medium | Low -- specify full lifecycle |
 | 6 | Event bus is unspecified | Medium | Medium -- full specification or deferral |
-| 7 | Concurrent job assignment and step result collection unspecified | High | Medium -- atomic operations + coordination protocol |
+| 7 | Event loop blocking from synchronous SQLite; step result coordination unspecified | High | Medium -- worker thread offloading + coordination protocol |
 | 8 | Timeout hierarchy undefined, timeout during side effects unhandled | High | Medium -- specify hierarchy + cooperative cancellation |
 | 9 | Backpressure is queue-level, not LLM-rate-limit-level | Medium | Medium -- rate-limit-aware scheduling |
 | 10 | No ordering guarantee for sequential user messages | High | Medium -- per-conversation serialization |
@@ -683,7 +685,7 @@ Implement WAL checkpoint management (periodic forced checkpoints during idle per
 | 12 | Sentinel throughput under concurrent load | Medium | Low -- specify concurrency model, consider batching |
 | 13 | Missing: DLQ, deduplication, graceful draining, queue observability | Medium | Medium -- incremental additions |
 | 14 | Loose schema enables unbounded message sizes | Medium | Low -- size limits |
-| 15 | SQLite cross-database transaction non-atomicity | Medium | Medium -- two-phase audit writes, WAL management |
+| 15 | SQLite cross-database consistency (ATTACH or two-phase approach needed), WAL management | Medium | Medium -- decide ATTACH vs. two-phase, add checkpoint management |
 
 ### The Three Things That Must Be Fixed Before Any Production Use
 

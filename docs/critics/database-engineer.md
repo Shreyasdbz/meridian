@@ -68,11 +68,11 @@ CREATE VIRTUAL TABLE procedures_fts USING fts5(content, content=procedures, cont
 CREATE VIRTUAL TABLE episodes_fts USING fts5(content, content=episodes, content_rowid=rowid);
 ```
 
-The `content=facts` syntax creates a **contentless FTS5 table** that reads content from the `facts` table on demand. This is space-efficient because FTS5 does not store a copy of the original content. However, it comes with a critical requirement that the architecture document does not mention.
+The `content=facts` syntax creates an **external content FTS5 table** that reads content from the `facts` table on demand. (Note: this is distinct from a *contentless* table, which uses `content=''` and cannot retrieve original text at all.) This is space-efficient because FTS5 does not store a copy of the original content. However, it comes with a critical requirement that the architecture document does not mention.
 
 ### The Problem
 
-Content-sync FTS5 tables do NOT automatically update when the underlying content table changes. From the SQLite documentation:
+External content FTS5 tables do NOT automatically update when the underlying content table changes. From the SQLite documentation:
 
 > "It is the responsibility of the user to ensure that the contents of an FTS index are consistent with the contents of the content table."
 
@@ -176,7 +176,7 @@ The document does not mention using SQLite's `json()` function or `CHECK` constr
     error_json TEXT CHECK (error_json IS NULL OR json_valid(error_json))
     ```
 
-    `json_valid()` is available in SQLite 3.38.0+ (2022-02-22), which is well within the `better-sqlite3` support window.
+    `json_valid()` has been available since SQLite 3.9.0 (2015-10-14) as part of the JSON1 extension, and became a built-in function (no longer requiring opt-in) in SQLite 3.38.0 (2022-02-22). Since `better-sqlite3` has always compiled with JSON1 enabled, `json_valid()` is available in all supported versions.
 
 2. **Consider the `JSONB` format** available in SQLite 3.45.0+ (2024-01-15). JSONB stores JSON in a binary format that is faster to query with `json_extract`. Since these columns are written once and potentially read many times (Job inspector in Bridge), JSONB is a small win. This is a minor optimization, not a priority.
 
@@ -502,7 +502,7 @@ This is a minor inconsistency for most data, but it means:
 
 1. **Pause write operations during backup.** Have Axis enter a "backup mode" where it stops dispatching new jobs, waits for in-flight writes to complete, then backs up all five databases in sequence. This creates a globally consistent snapshot at the cost of brief unavailability (typically <10 seconds for databases under 100 MB each).
 2. **Alternatively, accept the minor inconsistency** and document it. For a single-user self-hosted system, the backup inconsistency is unlikely to cause problems in practice. The consistency checks from Finding 1 can repair any orphaned references after restore.
-3. **Use `VACUUM INTO` for backup** (SQLite 3.27.0+, 2019). `VACUUM INTO 'backup.db'` creates a compacted copy in a single operation, which is faster and more space-efficient than the online backup API. However, it requires exclusive access for the duration (blocking writes to that database).
+3. **Use `VACUUM INTO` for backup** (SQLite 3.27.0+, 2019). `VACUUM INTO 'backup.db'` creates a compacted, consistent snapshot in a single operation, which is faster and more space-efficient than the online backup API. Unlike regular `VACUUM`, `VACUUM INTO` only acquires a shared (read) lock on the source database — it can run concurrently with both readers and writers in WAL mode without blocking them. This makes it well-suited for live backups.
 
 ---
 

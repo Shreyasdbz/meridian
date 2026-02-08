@@ -51,9 +51,10 @@ Each of these has fundamentally different failure modes, dependency chains, and 
 - **Docker** requires Docker to be installed and running. On a Pi, Docker's ARM64 images
   sometimes lag behind x64. The `better-sqlite3` native module needs to be compiled for
   the correct architecture inside the container.
-- **Docker Compose** adds another layer. The compose file includes SearXNG, which is
-  a second container. On a 4GB Pi, this means two containers competing for RAM before
-  Meridian even starts doing work.
+- **Docker Compose** adds another layer. The compose file includes SearXNG (marked as
+  "Optional" in the compose file comments), but users unfamiliar with Docker Compose may
+  not realize they can remove it. On a 4GB Pi, running both containers means competing for
+  RAM before Meridian even starts doing work.
 
 **The real question**: Who is testing all four installation methods on all target platforms
 (Pi 4 ARM64, Pi 5 ARM64, Mac Mini Intel, Mac Mini Apple Silicon, Ubuntu VPS x64, Debian VPS
@@ -76,15 +77,16 @@ bug reports that the maintainers cannot reproduce.
 
 ## 2. Update Mechanism: "No Automatic Updates" Is a Security Liability
 
-**Severity: P0**
+**Severity: P1**
 
-The architecture states:
+The architecture states (Section 10.5):
 
-> "No automatic background checks. No data is sent beyond the HTTP request itself."
-> Updates are "user-initiated."
+> "When the user explicitly runs `meridian update --check`, it queries the release API for the
+> latest version. No automatic background checks. No data is sent beyond the HTTP request itself
+> (no version reporting, no identifiers). This preserves the 'no telemetry' principle."
 
 This is philosophically aligned with the privacy-first ethos, and I respect the principle. But
-operationally, this is dangerous for a system that:
+operationally, the timing gap is concerning for a system that:
 
 1. Has an encrypted secrets vault with API keys for Anthropic, OpenAI, Google, etc.
 2. Runs sandboxed code (Gear) that, if the sandbox has a bug, could escape.
@@ -97,17 +99,21 @@ When a critical CVE is discovered in Meridian (not "if" -- "when"), how do users
   Users are notified on next Bridge login." But "next Bridge login" could be days or weeks
   away for a system designed to run autonomously in the background. The whole point of Meridian
   is that it works without the user watching it.
-- There is no push notification mechanism for security advisories. No RSS feed, no mailing
-  list, no webhook.
-- The Pi sitting under someone's desk running Meridian will cheerfully continue running a
-  vulnerable version for months.
+- Bridge does have a notification system (Section 5.5.5) including browser push notifications
+  and optional webhook integration for forwarding to email, Slack, Discord, or messaging apps.
+  However, these notification channels are not explicitly connected to the security advisory
+  mechanism. The architecture should clarify how security advisories are routed through the
+  existing notification infrastructure — especially the external webhook channel, which could
+  reach the user even when they are not actively using Bridge.
+- Without this connection, the Pi sitting under someone's desk running Meridian could continue
+  running a vulnerable version until the user happens to log in.
 
 **Recommendations**:
-- Implement a lightweight, privacy-respecting security advisory check. On startup (not
-  continuously), Meridian checks a signed advisory endpoint (just a version number and
-  severity, no telemetry). If a critical security patch exists for the running version,
-  display a persistent banner in Bridge and optionally send a notification through the
-  existing notification system (browser push, webhook).
+- Connect the security advisory mechanism to Bridge's existing notification system. On startup,
+  Meridian checks a signed advisory endpoint (just a version number and severity, no telemetry).
+  If a critical security patch exists for the running version, display a persistent banner in
+  Bridge and push a notification through the existing notification channels (browser push,
+  webhook).
 - This is not telemetry. It is a one-way read of a public file, equivalent to checking a
   GitHub releases RSS feed. The distinction matters.
 - Provide an official RSS/Atom feed and a mailing list for security advisories that users
@@ -151,13 +157,16 @@ On an 8GB Pi 5, this is more comfortable. On a 4GB Pi 4, running Docker Compose 
 is asking for trouble.
 
 **Recommendations**:
-- Make SearXNG optional in the compose file with clear comments. Default to an API-based
-  search Gear that does not require a local SearXNG instance.
+- SearXNG is already marked "Optional" in the compose file, but this should be made more
+  prominent — consider using Docker Compose profiles or a separate `docker-compose.searxng.yml`
+  override file so it is excluded by default. Provide an API-based search Gear alternative
+  that does not require a local SearXNG instance.
 - Document minimum RAM requirements honestly: 4GB for native install without Docker, 8GB for
   Docker Compose with SearXNG.
 - For 4GB Pi deployments, recommend process-level sandboxing (no Docker) and API-based search.
-  The architecture already mentions this preference in 11.2 but the compose file contradicts
-  it by including SearXNG.
+  The architecture already mentions this preference in 11.2, and the compose file does mark
+  SearXNG as optional, but the default experience of `docker compose up` will start both
+  containers unless the user knows to remove or profile-gate the SearXNG service.
 - Add memory limit declarations to the compose file (`mem_limit`/`deploy.resources.limits`)
   so containers cannot OOM the host.
 - Strongly recommend SSD boot (not SD card) in the deployment documentation. SD card corruption
@@ -221,10 +230,11 @@ reflection completed). After restore, the system thinks a job is done but has no
 
 This is a common and defensible choice. However:
 
-- **What happens when a migration has a bug?** The backup-before-migrate strategy is mentioned:
-  the update mechanism says "Before updating, the current binary and data are backed up." But
-  is this backup taken *after* the new binary is installed but *before* migrations run? Or
-  before the binary update? The ordering matters enormously.
+- **What happens when a migration has a bug?** The architecture addresses the ordering: Section
+  10.5 states "Database migrations: Run automatically after binary update, with pre-migration
+  backup." The "pre-migration" phrasing confirms the backup is taken after the new binary is
+  installed but before migrations run, which is the correct ordering. However, it should be
+  stated more explicitly to avoid ambiguity during implementation.
 - **Are migration rollbacks tested?** If the answer is "restore from backup and run the old
   binary," has anyone tested that the old binary can actually read a database that was backed
   up from a state where the new migration partially ran before failing?
@@ -234,15 +244,21 @@ This is a common and defensible choice. However:
   but the architecture does not explicitly state that each migration runs in a transaction.
 - **Schema version 5 databases exist in the wild.** Six months from now, when you are on
   schema version 12, a user who has been running version 0.1 decides to update. Migrations
-  001 through 012 must all run sequentially and correctly. Is this tested?
+  001 through 012 must all run sequentially and correctly. The architecture states "Each
+  migration is tested against all previous schema versions in CI" (Section 8.5), which is
+  encouraging. The key follow-through question is whether this means testing each migration
+  individually against its starting schema, or testing the full chain from version 1 to the
+  latest in a single run. Both are needed.
 
 **Recommendations**:
 - Explicitly state that each migration runs inside a single SQLite transaction. If any
   statement fails, the entire migration is rolled back and the schema version is unchanged.
-- The backup must be taken *after* the new binary is installed but *before* migrations run.
-  Document this ordering.
-- In CI, test the full migration chain: create a database at schema version 1, run all
-  migrations through to the latest, verify the result. Do this for every release.
+- The pre-migration backup ordering is implied ("pre-migration backup") but should be stated
+  more explicitly in the implementation spec: install new binary → backup databases → run
+  migrations → verify.
+- The architecture's CI testing of migrations against previous schema versions is good.
+  Ensure this includes a full-chain test (version 1 → latest in one run), not just individual
+  migration tests.
 - Provide a `meridian db check` command that validates the database schema matches the expected
   version without modifying anything. This helps users diagnose migration issues.
 - Consider keeping the last-known-good binary alongside the new one so `meridian rollback`
@@ -296,19 +312,24 @@ The architecture mentions:
 - Crash recovery on restart
 - Docker `restart: unless-stopped`
 
-But it does not address how Meridian runs as a persistent service outside of Docker:
+But it only partially addresses how Meridian runs as a persistent service outside of Docker:
 
-- **On a Pi or VPS without Docker**: How does Meridian start on boot? There is no mention of a
-  systemd unit file. The user is presumably expected to create their own, or the install script
-  creates one. But the install script is not documented in detail.
+- **On a Pi or VPS without Docker**: How does Meridian start on boot? The architecture mentions
+  "systemd journal integration" for log output (Section 12.1), indicating awareness of systemd,
+  but does not ship a systemd unit file. The user is presumably expected to create their own,
+  or the install script creates one. But the install script is not documented in detail.
 - **Crash loops**: What happens when Meridian crashes on startup (e.g., corrupted database,
   missing dependency, port already in use)? With Docker's `restart: unless-stopped`, it will
   restart and crash again, ad infinitum, burning CPU and filling logs. With systemd, the
   default behavior is to restart up to 5 times in 10 seconds and then give up, which is better
   but not great.
-- **Resource limits**: The architecture mentions Gear resource limits (memory, CPU, timeout) but
-  says nothing about limits on the main Meridian process itself. On a 4GB Pi, if the Node.js
-  process leaks memory and grows to 2GB, everything else on the system suffers.
+- **Resource limits**: The architecture does have internal resource governance — Section 11.2
+  states Axis monitors system memory and pauses non-critical jobs if available RAM drops below
+  512 MB, and alerts when disk usage exceeds 80%. However, these are internal, reactive
+  controls. They do not prevent the Node.js process itself from growing unbounded. On a 4GB
+  Pi, if the Node.js process has a memory leak and grows to 2GB before Axis's monitoring kicks
+  in, everything else on the system suffers. External hard limits (systemd `MemoryMax`, Node.js
+  `--max-old-space-size`) are needed as a safety net.
 - **File descriptor limits**: Each SQLite database, each log file, each Gear sandbox process,
   each WebSocket connection consumes file descriptors. The default `ulimit -n` on many Linux
   systems is 1024. With 5 databases + logs + sockets + Gear processes, you can approach this
@@ -482,7 +503,9 @@ There is no mention of:
 - **Database growth**: The architecture mentions 90-day episodic memory retention and 1-year
   audit log retention. But SQLite does not reclaim space from deleted rows automatically --
   it requires `VACUUM`. The architecture mentions "Database vacuuming... run during idle
-  periods" (Section 11.2) but does not specify how often or what triggers it.
+  periods" (Section 11.2), which establishes the trigger but lacks specifics: how is "idle"
+  defined? What threshold of deleted rows triggers a vacuum? Without these details, the
+  implementation could vacuum too aggressively (blocking writes) or too rarely (wasting disk).
 - **Backup storage**: 7 daily + 4 weekly + 3 monthly backups of 5 databases. If each database
   is 50 MB, that is 14 * 250 MB = 3.5 GB of backups. On a 32 GB SD card, that is over 10%
   of total storage just for backups.
@@ -516,15 +539,26 @@ The health endpoint (Section 12.3) returns:
 ```json
 {
   "status": "healthy",
+  "version": "0.1.0",
+  "uptime_seconds": 86400,
   "components": {
+    "axis": { "status": "healthy", "queue_depth": 3 },
     "scout": { "status": "healthy", "provider": "anthropic" },
-    "sentinel": { "status": "healthy", "provider": "openai" }
+    "sentinel": { "status": "healthy", "provider": "openai" },
+    "journal": { "status": "healthy", "memory_count": 1234 },
+    "bridge": { "status": "healthy", "active_sessions": 1 }
   }
 }
 ```
 
-**What does "healthy" mean for Scout and Sentinel?** Merely that the component is loaded?
-That the provider is configured? Or that a test API call succeeded? The difference matters:
+This is more informative than a bare status check — it includes `version`, `uptime_seconds`,
+queue depth, memory count, and active sessions. The fact that `journal` returns a `memory_count`
+and `axis` returns a `queue_depth` implies database queries are succeeding, which provides
+implicit database connectivity verification.
+
+However, **what does "healthy" mean for Scout and Sentinel?** Merely that the component is
+loaded? That the provider is configured? Or that a test API call succeeded? The difference
+matters:
 
 - If "healthy" means "configured," then Scout shows as healthy even when the Anthropic API
   is down or the API key has expired. The user sees green status and wonders why no jobs
@@ -534,9 +568,10 @@ That the provider is configured? Or that a test API call succeeded? The differen
 - If "healthy" means "we just made a test call," that costs money (LLM API charges) and
   adds latency to the health check.
 
-Similarly, the health check does not mention:
+Additionally, the health check does not include:
 
-- Database connectivity (can all 5 databases be opened and queried?).
+- Explicit database integrity checks (the implicit checks via `memory_count` and `queue_depth`
+  confirm connectivity but not integrity).
 - Disk space status.
 - Memory pressure.
 - Gear sandbox readiness (can a sandbox be created?).
@@ -558,7 +593,7 @@ Similarly, the health check does not mention:
 
 ## 13. Incident Response: No Debug Bundle, No Diagnostics
 
-**Severity: P1**
+**Severity: P2**
 
 When things go wrong at 3 AM on someone's Pi, what can they do?
 
@@ -600,25 +635,29 @@ The architecture provides:
 
 ---
 
-## 14. Missing: Main Process Resource Governance
+## 14. Main Process Resource Governance: Internal Monitoring Needs External Limits
 
-**Severity: P1**
+**Severity: P2**
 
 The architecture is meticulous about Gear resource limits:
 
 > "maxMemoryMb: 256 MB, maxCpuPercent: 50%, timeoutMs: 300000"
 
-But says nothing about limiting the main Meridian process itself. This is like putting locks
-on all the cabinet doors but leaving the front door wide open.
+For the main process, the architecture does have internal monitoring (Section 11.2): Axis
+monitors system memory and pauses non-critical jobs if available RAM drops below 512 MB, and
+it alerts on disk usage exceeding 80%. It also has an internal watchdog (Section 5.1.5) that
+detects event loop blocking >10 seconds. These are good reactive controls, but they are all
+internal — if the Node.js process itself is the problem (memory leak, deadlock, V8 GC pause),
+these internal mechanisms cannot help.
 
-**Missing controls**:
+**Controls that need external enforcement**:
 
 | Resource | Risk | Status |
 |----------|------|--------|
-| **Main process memory** | Node.js V8 heap can grow unbounded due to memory leaks, large context assembly, or vector operations. On a 4GB Pi, an unconstrained Node.js process can OOM the entire system. | **Not addressed** |
+| **Main process memory** | Node.js V8 heap can grow unbounded due to memory leaks, large context assembly, or vector operations. Internal monitoring (512 MB floor) helps with job backpressure but does not constrain the process itself. | **Partially addressed** (internal monitoring only, no external hard limit) |
 | **OOM killer behavior** | On Linux, when memory is exhausted, the OOM killer picks a victim. Without `oom_score_adj`, it might kill SearXNG or Docker instead of Meridian, leaving the system in a weird half-alive state. | **Not addressed** |
 | **File descriptor limits** | 5 SQLite databases (open connections) + log files + WebSocket connections + Gear sandbox IPC + HTTP connections. Under load, file descriptor exhaustion causes cryptic "EMFILE: too many open files" errors. | **Not addressed** |
-| **systemd watchdog** | The architecture mentions a 10-second event loop watchdog, but this is internal only. If the process hangs completely (deadlock, V8 GC pause), nobody restarts it. systemd's `WatchdogSec` with `sd_notify` provides external watchdog support. | **Not addressed** |
+| **systemd watchdog** | The architecture has a 10-second internal event loop watchdog (Section 5.1.5), but this is internal only. If the process hangs completely (deadlock, V8 GC pause), the internal watchdog cannot fire. systemd's `WatchdogSec` with `sd_notify` provides external watchdog support. | **Partially addressed** (internal watchdog exists, no external integration) |
 | **CPU governor** | On a Pi, the default CPU governor may be `ondemand` or `powersave`, which throttles CPU frequency. Under sustained LLM API wait + Gear execution load, this can cause unexpected latency. | **Not addressed** |
 | **Swap configuration** | On a Pi with limited RAM, swap can prevent OOM but destroys performance on SD cards. The architecture says nothing about whether swap is expected, recommended, or dangerous. | **Not addressed** |
 | **Kernel parameters** | `vm.swappiness`, `vm.dirty_ratio`, `fs.file-max`, `net.core.somaxconn` -- these matter on constrained devices and the architecture does not mention any of them. | **Not addressed** |
@@ -656,9 +695,12 @@ scheduled job execution.
 
 **Severity: P2**
 
-Pis get unplugged. Power outages happen. SD cards do not have power-loss protection. SQLite
-in WAL mode with `synchronous=NORMAL` (the default for `better-sqlite3`) can lose the last
-few transactions on power loss. With `synchronous=FULL`, writes are slower but safer.
+Pis get unplugged. Power outages happen. SD cards do not have power-loss protection and
+typically lack proper write barriers. SQLite in WAL mode with `synchronous=NORMAL` (the
+default for `better-sqlite3`) protects against application crashes, but on hardware without
+proper write barriers (like most SD cards), a power loss can corrupt the database if the
+filesystem's write ordering guarantees are not honored. With `synchronous=FULL`, SQLite
+issues explicit fsync calls that provide stronger guarantees at the cost of write performance.
 
 **Recommendation**: Default to `synchronous=FULL` for `audit.db` and `secrets.vault`
 (integrity matters more than performance). Use `synchronous=NORMAL` for other databases where
@@ -707,29 +749,29 @@ for an existing lock. If found, refuse to start with a clear error message.
 | # | Issue | Section |
 |---|-------|---------|
 | 1 | Implement crash-consistent backup using SQLite Backup API with cross-database quiescence | 4 |
-| 2 | Add a privacy-respecting security advisory check mechanism | 2 |
 
 ### P1 - Should Fix Before v1.0
 
 | # | Issue | Section |
 |---|-------|---------|
+| 2 | Connect security advisory mechanism to Bridge's existing notification system | 2 |
 | 3 | Pick blessed installation method per platform; build CI test matrix | 1 |
-| 4 | Honest RAM requirements; make SearXNG optional; add compose memory limits | 3 |
-| 5 | Wrap migrations in transactions; test full migration chains in CI | 5 |
+| 4 | Honest RAM requirements; make SearXNG clearly excludable; add compose memory limits | 3 |
+| 5 | Wrap migrations in transactions; ensure full-chain migration testing in CI | 5 |
 | 6 | Ship systemd unit file with resource limits and watchdog integration | 7 |
 | 7 | Implement startup reconciliation for cross-database consistency | 10 |
-| 8 | Implement workspace cleanup policies and `VACUUM` scheduling | 11 |
-| 9 | Build CLI diagnostics (`meridian doctor`, `meridian debug-bundle`) | 13 |
-| 10 | Set Node.js heap limits; document swap/OOM/fd recommendations | 14 |
+| 8 | Implement workspace cleanup policies and `VACUUM` scheduling with defined thresholds | 11 |
 
 ### P2 - Fix in Early Releases
 
 | # | Issue | Section |
 |---|-------|---------|
-| 11 | Implement log size caps and compression | 6 |
-| 12 | Build system status dashboard in Bridge (not Prometheus-dependent) | 8 |
-| 13 | Distinguish 401 from 5xx in retry logic; implement internal secret rotation | 9 |
-| 14 | Implement tiered health checks (shallow + deep) | 12 |
+| 9 | Implement log size caps and compression | 6 |
+| 10 | Build system status dashboard in Bridge (not Prometheus-dependent) | 8 |
+| 11 | Distinguish 401 from 5xx in retry logic; implement internal secret rotation | 9 |
+| 12 | Implement tiered health checks (shallow + deep) | 12 |
+| 13 | Build CLI diagnostics (`meridian doctor`, `meridian debug-bundle`) | 13 |
+| 14 | Add external process resource limits (Node.js heap, systemd MemoryMax, fd limits) | 14 |
 | 15 | Default to `synchronous=FULL` for audit and vault databases | 15.2 |
 | 16 | Recommend SSD; document SD card wear risks | 15.3 |
 | 17 | Implement PID file / advisory lock to prevent concurrent instances | 15.5 |

@@ -1,7 +1,7 @@
 # Privacy Review: Meridian Architecture
 
 **Reviewer**: Independent Privacy Advocate & Digital Rights Analyst
-**Document Reviewed**: `docs/architecture.md` v1.2 (2026-02-07), `docs/idea.md`
+**Document Reviewed**: `docs/architecture.md` v1.2 (2026-02-07)
 **Review Date**: 2026-02-07
 **Methodology**: Line-by-line analysis against GDPR (EU 2016/679), CCPA/CPRA (California), ePrivacy Directive, OWASP LLM Top 10, and general privacy engineering best practices
 
@@ -9,13 +9,13 @@
 
 ## Executive Summary
 
-Meridian presents itself as a privacy-first, self-hosted AI assistant where "all data stays on the user's device" and "privacy is a right." The architecture document contains genuinely thoughtful privacy engineering in several areas -- encrypted secrets, local storage, no telemetry, user-controlled memory. These are real, positive commitments that distinguish it from cloud-hosted alternatives.
+Meridian presents itself as a privacy-first, self-hosted AI assistant where "privacy is a right." The architecture document contains genuinely thoughtful privacy engineering in several areas -- encrypted secrets, local storage, no telemetry, user-controlled memory, full audit logging of API transmissions, and a local-model path for zero external data sharing. These are real, positive commitments that distinguish it from cloud-hosted alternatives.
 
-However, this review identifies **13 findings ranging from critical to informational** that collectively reveal a gap between Meridian's privacy marketing and its operational reality. The most fundamental issue is this: the system's core functionality depends on sending user data to third-party LLM APIs, yet this is consistently downplayed through careful linguistic framing rather than confronted directly. Several additional findings relate to underspecified privacy controls for specific data modalities, incomplete regulatory compliance posture, and claims about technical privacy measures that do not withstand scrutiny.
+However, this review identifies **13 findings ranging from high to informational** that reveal areas where the architecture's privacy controls could be strengthened or its communication sharpened. The most significant tension is between the "all data stays on your device" framing and the operational reality that core LLM processing requires external API transmission -- a tension the architecture acknowledges but could address more prominently. Several additional findings relate to underspecified privacy controls for specific data modalities, incomplete regulatory compliance posture, and technical privacy measures whose limitations deserve documentation.
 
-None of these findings are unique to Meridian -- they are endemic to the LLM-powered application space. But Meridian explicitly markets itself as the privacy-respecting alternative. A higher standard of scrutiny is therefore appropriate and invited.
+None of these findings are unique to Meridian -- they are endemic to the LLM-powered application space. But Meridian explicitly positions itself as the privacy-respecting alternative. A higher standard of scrutiny is therefore appropriate and invited.
 
-**Overall Assessment**: Meridian's privacy posture is significantly stronger than cloud-hosted alternatives but falls short of its own stated principles. The gap is addressable, but requires honest architectural and communicative changes, not just documentation patches.
+**Overall Assessment**: Meridian's privacy posture is significantly stronger than cloud-hosted alternatives. The architecture explicitly addresses the external API tension, provides a genuine fully-local path, and includes audit controls that most competitors lack. The findings below identify areas where the gap between stated principles and operational reality can be further narrowed through clearer communication, additional controls, and more complete coverage of data modalities.
 
 ---
 
@@ -23,17 +23,16 @@ None of these findings are unique to Meridian -- they are endemic to the LLM-pow
 
 | Severity | Definition |
 |----------|------------|
-| **CRITICAL** | Fundamental contradiction with stated privacy principles, or likely regulatory non-compliance |
-| **HIGH** | Significant privacy risk that could result in uncontrolled data exposure |
+| **HIGH** | Significant privacy risk that could result in uncontrolled data exposure or likely regulatory concern |
 | **MEDIUM** | Missing controls or underspecified behavior that creates privacy uncertainty |
 | **LOW** | Minor gaps, best-practice deviations, or improvement opportunities |
 | **INFORMATIONAL** | Observations that do not represent current risk but warrant tracking |
 
 ---
 
-## Finding 1: The Central Privacy Paradox
+## Finding 1: The Privacy Framing Tension
 
-**Severity: CRITICAL**
+**Severity: HIGH**
 
 ### The Claim
 
@@ -41,36 +40,33 @@ Section 2 (Core Principles):
 
 > "Privacy as a right -- All data stays on the user's device. LLM API calls transmit the minimum context necessary. No telemetry, no phoning home."
 
-### The Reality
+### The Tension
 
-Meridian's core functionality -- the entire Scout planning pipeline, Sentinel safety validation, Journal reflection, and optionally embedding generation -- requires transmitting user data to external servers operated by Anthropic, OpenAI, Google, or OpenRouter. These are not peripheral features. They are the system.
+Core Principle #2 is a compound statement: the first sentence asserts local data storage, while the second and third sentences explicitly acknowledge external LLM API transmission and commit to minimizing it. Section 7.1 reinforces this in its opening principle: "All data is stored on the user's device. Nothing is sent externally except to LLM APIs for processing, and only the minimum necessary context." The architecture does not hide this tension -- it addresses it directly, and Section 7.3 point 5 further commits to full audit logging of every API call including exact content sent.
+
+However, the lead sentence -- "All data stays on the user's device" -- is what readers will remember, and it is technically inaccurate for any deployment using external LLM APIs. This matters because Meridian positions itself against platforms with weak privacy postures. The distinction between persistent storage (genuinely local) and processing (requires external transmission in default configuration) deserves more prominent treatment than a qualifier in the same sentence.
 
 When a user says "Draft an email to my doctor about my test results," the following data leaves the device:
 
-1. The user's message (to Scout's LLM provider)
-2. Retrieved memory context, which may include health-related semantic memories (to Scout's LLM provider)
-3. The execution plan, which may contain file paths, email addresses, and task descriptions (to Sentinel's LLM provider -- potentially a different company)
-4. Reflection content, including the outcome and extracted learnings (to Journal's LLM provider)
+1. The user's message and retrieved memory context (to Scout's LLM provider)
+2. The execution plan, which contains structured step parameters including action targets like email addresses (to Sentinel's LLM provider -- potentially a different company)
+3. Reflection content, including outcome analysis and extracted learnings (to Scout's LLM provider -- the Reflector uses "a capable model, same as Scout or a model configured for code generation" per Section 5.4.3, not a separate third provider)
 
-That is potentially three separate companies receiving data derived from a single user interaction about a medical matter. The claim that "all data stays on the user's device" is technically false for any deployment that uses external LLM APIs, which is the default and recommended configuration.
+That is at most two separate companies receiving data derived from a single user interaction -- not three as one might assume, since Journal shares Scout's provider by default (the config.toml in Section 10.4 configures separate providers only for Scout and Sentinel, with Journal having only an embedding provider).
 
-### Why This Matters
-
-Under GDPR Article 5(1)(a) (lawfulness, fairness, and transparency), data processing must be transparent to the data subject. Under GDPR Article 13, the user must be informed about the recipients or categories of recipients of personal data. The current framing obscures rather than clarifies the actual data flows.
-
-The architecture document itself tacitly acknowledges this contradiction in Section 7.1 where it redefines "local by default" to mean "except to LLM APIs for processing." This is a significant qualifier buried in the middle of a sentence.
+Under GDPR Article 5(1)(a) (transparency), data processing must be transparent to the data subject. Under GDPR Article 13, the user must be informed about the recipients of personal data. While the architecture does document these flows, the Core Principles framing could be clearer about the processing-vs-storage distinction.
 
 ### Recommendation
 
-- Replace "All data stays on the user's device" with an honest statement such as: "All persistent data is stored locally on your device. Task processing requires sending portions of your data to the LLM API providers you configure. You can eliminate external data transmission entirely by using local models."
+- Rephrase the lead sentence to distinguish storage from processing: "All persistent data is stored locally on your device. Task processing requires sending portions of your data to the LLM API providers you configure. You can eliminate external data transmission entirely by using local models."
 - Add a first-run disclosure in Bridge that explicitly lists which providers will receive data, what categories of data they will receive, and links to each provider's data handling policy.
 - Display a visual indicator in the UI when data is being transmitted externally vs. processed locally.
 
 ---
 
-## Finding 2: "Minimum Context Principle" is Undefined and Circular
+## Finding 2: "Minimum Context Principle" Could Be Strengthened
 
-**Severity: HIGH**
+**Severity: MEDIUM**
 
 ### The Claim
 
@@ -78,23 +74,22 @@ Section 7.1 and 7.3:
 
 > "Only the information Scout needs for the current task is included."
 
-Section 5.2.3 specifies the context sent: system prompt, last 20 messages, top-5 semantically similar memories, and active job state.
+Section 5.2.3 specifies the context sent: system prompt, last 20 messages, top-5 semantically similar memories, and active job state. Section 11.1 further specifies explicit token budgets: ~2,000 tokens for the system prompt, up to 4,000 for recent conversation, and up to 2,000 for retrieved memories.
 
 ### The Problem
 
-"Only what Scout needs" is determined by Scout's own context assembly logic, which is itself shaped by LLM retrieval heuristics. This is circular: the system decides what is "minimum" based on semantic similarity scores from an embedding model, not based on a principled data minimization analysis.
+The minimum context principle is defined with concrete, configurable numbers -- this is a strength. However, the operative definition of "minimum" is driven by semantic relevance to the LLM's task, which is not the same as data minimization in the GDPR sense.
 
-Consider: a user asks "What's the weather like?" The semantic search might retrieve a memory like "User lives at 42 Oak Street, Portland" because it is contextually relevant. That memory -- containing a precise home address -- is now sent to the LLM API provider. The "minimum context principle" did not prevent PII transmission; it arguably facilitated it by retrieving contextually relevant personal information.
+Consider: a user asks "What's the weather like?" The semantic search might retrieve a memory like "User lives at 42 Oak Street, Portland" because it is contextually relevant. That memory -- containing a precise home address -- is now sent to the LLM API provider. The minimum context principle did not prevent PII transmission; it arguably facilitated it by retrieving contextually relevant personal information.
 
 The default of 20 recent messages is also generous. A conversation could easily contain sensitive information in messages 5-15 that has no bearing on the current query at message 20.
 
-Under GDPR Article 5(1)(c), the data minimization principle requires that personal data be "adequate, relevant and limited to what is necessary in relation to the purposes for which they are processed." A semantic similarity threshold is not a legal sufficiency analysis. Relevance to the LLM's task performance is not the same as necessity for the purpose.
+Under GDPR Article 5(1)(c), the data minimization principle requires that personal data be "adequate, relevant and limited to what is necessary in relation to the purposes for which they are processed." Semantic similarity to the current query is a reasonable proxy for relevance but is not identical to legal necessity. The architecture's numerical limits (configurable message count, configurable memory results, explicit token budgets) provide the mechanism for enforcement, but the defaults could be tighter.
 
 ### Recommendation
 
-- Define "minimum context" in concrete, auditable terms -- not as a vague principle but as a configurable policy with sensible defaults.
 - Implement data classification-aware retrieval: memories tagged as "Confidential" (per Section 7.2) should require a higher relevance threshold before inclusion, or should be excluded from context unless the task explicitly involves that data category.
-- Allow users to set a hard cap on context messages (e.g., last 5 instead of 20) and memory results (e.g., 2 instead of 5).
+- Consider lower defaults for context messages (e.g., last 10 instead of 20) and memory results (e.g., 3 instead of 5).
 - Consider a "context preview" feature that shows the user exactly what will be sent to the LLM before the API call is made, at least for tasks involving Confidential-tier data.
 
 ---
@@ -123,7 +118,7 @@ PII stripping is described as an LLM-driven process (the Reflector uses an LLM c
 4. **Nicknames and references**: "Tell my wife" followed later by a name establishes a relationship. The PII is the relationship graph, not any individual datum.
 5. **Compound inference**: Individual non-PII facts can combine to uniquely identify a person. "Left-handed Python developer at a 12-person startup in Lisbon" is likely unique.
 
-Academic literature consistently shows that even state-of-the-art NER systems achieve 85-92% recall on standard PII categories and far less on context-dependent PII. An LLM doing PII stripping as a side task during reflection will perform worse.
+Academic literature consistently shows that even state-of-the-art NER systems achieve 85-92% recall on standard PII categories and far less on context-dependent PII. An LLM doing PII stripping as a side task during reflection will likely perform comparably at best.
 
 The architecture specifies no validation of the stripping, no measurement of its effectiveness, and no fallback when it fails.
 
@@ -137,9 +132,9 @@ The architecture specifies no validation of the stripping, no measurement of its
 
 ---
 
-## Finding 4: LLM Provider Data Handling is Trusted Without Verification
+## Finding 4: LLM Provider Data Handling Could Be Better Surfaced
 
-**Severity: HIGH**
+**Severity: MEDIUM**
 
 ### The Claim
 
@@ -149,17 +144,19 @@ Section 7.3 (LLM API Data Handling):
 
 ### The Problem
 
-This statement delegates the entire third-party privacy risk to the user's awareness, without the system doing anything to facilitate that awareness. Concretely:
+The architecture does take meaningful steps toward provider transparency: Section 7.3 point 5 commits to logging "every API call to external LLMs in the audit trail, including the exact content sent (viewable by the user, stored locally)." This is a genuinely strong transparency control that most competitors lack. Section 7.3 point 3 also commits to not recommending providers based on cost over privacy.
 
-1. **Policies differ materially**: As of early 2026, Anthropic's API terms state that API inputs are not used for training by default. OpenAI's API terms require an explicit opt-out for certain usage. Google's Gemini API terms differ again. These are not equivalent, but Meridian treats them identically.
+However, the statement that users choose providers with "full awareness" of their data handling policies implies a level of informed consent that the system does not actively facilitate beyond audit logging. Concretely:
 
-2. **Policies change**: Provider data handling policies are updated regularly. A user who configured their provider a year ago may be operating under materially different terms than when they made the choice. Meridian has no mechanism to notify users of policy changes.
+1. **Policies differ materially**: As of early 2026, Anthropic's API terms state that API inputs are not used for training by default. OpenAI's API terms require an explicit opt-out for certain usage. Google's Gemini API terms differ again. These are not equivalent, but Meridian treats them identically during provider selection.
 
-3. **Sub-processors**: LLM providers use sub-processors (cloud hosting providers, safety review teams, content moderation systems). Data shared with the primary provider may be further shared. The architecture does not account for this chain.
+2. **Policies change**: Provider data handling policies are updated regularly. A user who configured their provider a year ago may be operating under materially different terms. Meridian has no mechanism to notify users of policy changes.
+
+3. **Sub-processors**: LLM providers use sub-processors (cloud hosting providers, safety review teams, content moderation systems). Data shared with the primary provider may be further shared. The architecture does not surface this chain.
 
 4. **Data residency**: For EU users, sending data to a US-based LLM provider raises GDPR Chapter V (international transfer) concerns. The Schrems II decision invalidated Privacy Shield, and the successor EU-US Data Privacy Framework is under ongoing legal challenge. Meridian does not surface data residency information.
 
-5. **No DPA framework**: Under GDPR Article 28, when personal data is processed by a third party, a Data Processing Agreement is required. Meridian's architecture makes no mention of DPAs, does not help users understand whether their LLM provider's terms constitute an adequate DPA, and does not surface this requirement.
+5. **No DPA framework**: Under GDPR Article 28, when personal data is processed by a third party, a Data Processing Agreement is required. Meridian's architecture does not help users understand whether their LLM provider's terms constitute an adequate DPA.
 
 ### Recommendation
 
@@ -183,19 +180,19 @@ Section 6.2 (LLM08 mitigation):
 
 ### The Problem
 
-This claim is partially misleading. It is true that embeddings are not trivially invertible -- you cannot simply "decode" an embedding back to its original text. However:
+The body text uses the measured phrase "resist reconstruction," which is defensible. However, the section header -- "No embedding inversion" -- makes a stronger categorical claim that the body does not support. This header language is what readers will take away.
 
-1. **Inversion attacks are real and improving**: Research papers from 2023-2025 (Vec2Text by Morris et al., Text Embeddings Reveal Almost as Much as Text by various groups) have demonstrated that text embeddings from models like OpenAI's `text-embedding-ada-002` can be inverted to recover 60-90% of the original text content using iterative refinement techniques. "Resist reconstruction" is not the same as "prevent reconstruction."
+1. **Inversion attacks are real and improving**: Research papers from 2023-2025 (Vec2Text by Morris et al., Text Embeddings Reveal Almost as Much as Text by various groups) have demonstrated that text embeddings from models like OpenAI's `text-embedding-ada-002` can be inverted to recover significant portions of original text content using iterative refinement techniques. "Resist reconstruction" is accurate; "No embedding inversion" overstates the guarantee.
 
-2. **Dimensionality reduction helps but is not a guarantee**: The architecture mentions `nomic-embed-text` (768 dimensions) and `all-MiniLM-L6-v2` (384 dimensions) as local options. Lower-dimensional embeddings are harder to invert, but they still encode substantial semantic content. A 384-dimensional embedding of "Patient diagnosed with stage 2 breast cancer" retains enough information for an attacker with access to the embedding model to recover the medical nature of the content.
+2. **Dimensionality reduction helps but is not a guarantee**: The architecture mentions `nomic-embed-text` (768 dimensions) and `all-MiniLM-L6-v2` (384 dimensions) as local options. Lower-dimensional embeddings are harder to invert, but they still encode substantial semantic content.
 
 3. **External embedding is the real risk**: The architecture allows embeddings to be generated via external APIs (OpenAI, Anthropic) when local embedding is not configured. In this case, the full text is sent to the API for embedding generation. The stored embedding's inversion resistance is irrelevant -- the plaintext was already transmitted.
 
-4. **The "local embeddings" option is not the default for all targets**: Section 11.2 notes that Raspberry Pi deployments may "skip local embeddings and use API-based embedding" due to resource constraints. The least powerful devices -- presumably chosen for privacy via self-hosting -- get the weakest privacy protection for embeddings.
+4. **Constrained device fallback**: Section 11.2 notes that Raspberry Pi deployments may "skip local embeddings and use API-based embedding" due to resource constraints. The least powerful devices -- presumably chosen for privacy via self-hosting -- get the weakest privacy protection for embeddings.
 
 ### Recommendation
 
-- Remove the categorical claim "No embedding inversion." Replace with a nuanced explanation: "Local embeddings reduce privacy risk compared to sending full text, but embeddings retain semantic information and should be treated as sensitive data."
+- Rename the section header from "No embedding inversion" to something like "Embedding inversion resistance" that matches the body text's more measured claim.
 - Make local embedding the strong default across all deployment targets. If a Raspberry Pi cannot run `nomic-embed-text`, recommend `all-MiniLM-L6-v2` at 80 MB rather than falling back to external APIs.
 - If external embedding APIs are used, log this prominently in the audit trail and surface it in the privacy dashboard.
 - Encrypt the vector database (`journal-vectors.db`) at rest, just as other databases are described as encrypted.
@@ -281,7 +278,7 @@ Section 5.5.3 (Input Modalities):
 
 ### The Problem
 
-Voice data is among the most sensitive categories of personal data. A voice recording is biometric data under GDPR Article 9 (special categories) when used for identification purposes, and even when not used for identification, it reveals characteristics such as emotional state, accent (potentially revealing ethnicity/nationality), and health indicators.
+Voice data requires careful privacy handling. A voice recording can reveal characteristics such as emotional state, accent (potentially revealing ethnicity/nationality), and health indicators. When used for the purpose of uniquely identifying a natural person, voice data constitutes biometric data under GDPR Article 9 (special categories). Even when Meridian uses voice only for transcription (not identification), the raw audio inherently contains these sensitive characteristics during transmission and processing.
 
 The architecture specifies:
 - **Nothing** about how voice recordings are stored
@@ -291,7 +288,7 @@ The architecture specifies:
 - **Nothing** about whether voice recordings persist after transcription
 - **Nothing** about what happens if transcription fails (is the audio retained for retry?)
 
-If the Whisper API (external) is used, raw audio leaves the device. This is a more severe privacy event than text transmission because audio cannot be de-identified, contains biometric information, and may capture ambient conversations (third parties who did not consent).
+If the Whisper API (external) is used, raw audio leaves the device. This is a more severe privacy event than text transmission because audio cannot be de-identified after the fact and may capture ambient conversations (third parties who did not consent).
 
 ### Recommendation
 
@@ -317,15 +314,15 @@ Section 4.1 shows Image/Video as an input modality. Section 5.5.3 describes:
 
 ### The Problem
 
-The architecture says absolutely nothing about privacy handling for visual data. This is a significant omission because images and video can contain:
+The architecture says very little about privacy handling for visual data. This is a significant omission because images and video can contain:
 
-1. **Faces**: Biometric data under GDPR Article 9. Processing facial data requires explicit consent under most jurisdictions.
+1. **Faces**: When used for identification purposes, facial data constitutes biometric data under GDPR Article 9. Even when Meridian is not performing facial recognition, images containing faces transmitted to external LLM APIs expose this data to the provider's processing.
 2. **Documents**: Photographed documents (passports, medical records, financial statements) contain concentrated PII.
 3. **Location data**: EXIF metadata in images contains GPS coordinates, timestamps, and device information.
 4. **Background content**: Whiteboards, screens, papers on desks, other people in frame.
 5. **License plates, street signs**: Identifying information about locations and potentially about third parties.
 
-When images are sent to external LLM APIs for understanding (which is the only way multimodal understanding works with current architecture), all of this data is transmitted to the provider. "Minimum context" is meaningless for images -- you cannot send a "minimum" portion of a photograph.
+When images are sent to external LLM APIs for understanding (which is the primary way multimodal understanding works with current architecture), all of this data is transmitted to the provider. Unlike text, images cannot easily be "minimized" -- you generally cannot send a partial photograph and retain usefulness.
 
 The "video understanding APIs" mentioned are entirely unspecified. Which APIs? What data do they receive? Are frames extracted locally or sent as raw video? How much video is retained?
 
@@ -342,7 +339,7 @@ The "video understanding APIs" mentioned are entirely unspecified. Which APIs? W
 
 ## Finding 10: Gear Data Exfiltration Within Allowed Permissions
 
-**Severity: MEDIUM**
+**Severity: LOW**
 
 ### The Claim
 
@@ -350,7 +347,9 @@ Section 5.6 extensively describes the Gear permission model: declared filesystem
 
 ### The Problem
 
-The permission model is necessary but not sufficient to prevent data exfiltration. A Gear that has both filesystem read access and network access to its declared domain can exfiltrate any file it can read to any server within its allowed domains.
+The architecture is aware of this risk -- Section 6.1's threat model explicitly lists "Malicious Gear | Exfiltrate data | Unauthorized network access, file exfiltration" as a known adversary, and Section 5.6.1 commits to "every action a Gear takes is logged and auditable." These are meaningful controls.
+
+However, the permission model, while necessary, is not sufficient to prevent data exfiltration by a Gear that has both legitimate filesystem read access and legitimate network access. A Gear that has both permissions can exfiltrate any file it can read to any server within its allowed domains.
 
 Example: A `gmail-integration` Gear has:
 - `filesystem.read: ["workspace/**"]` (to read attachments)
@@ -360,12 +359,12 @@ This Gear could read any file in workspace and POST it to a Gmail draft (effecti
 
 More subtly, a Gear could encode data in seemingly innocuous API calls -- query parameters, custom headers, timing patterns -- to its allowed domain. This is a covert channel that no manifest-based permission system can detect.
 
-The Sentinel validation reviews execution plans, not Gear runtime behavior. Once Sentinel approves a plan that says "send email via gmail Gear," it has no visibility into what the gmail Gear actually transmits.
+Sentinel validates execution plans, not Gear runtime behavior. Once Sentinel approves a plan that says "send email via gmail Gear," it has no visibility into what the gmail Gear actually transmits beyond what the audit log captures.
 
 ### Recommendation
 
-- Acknowledge this limitation in the security architecture. Manifest-based permissions reduce the attack surface but do not eliminate data exfiltration risk for Gear with both read and network permissions.
-- Implement Gear-level network traffic logging: record the size, destination, and high-level content type of all network requests made by Gear, and surface this in the audit log.
+- Acknowledge this limitation explicitly in the security architecture section. Manifest-based permissions reduce the attack surface but do not eliminate data exfiltration risk for Gear with both read and network permissions.
+- Enhance Gear-level network traffic logging beyond action-level auditing: record the size and high-level content type of all network requests made by Gear, and surface anomalies.
 - Consider a "data flow policy" layer that limits the volume of data a Gear can transmit relative to its input parameters. A Gear that reads 10 MB of files but only needs to send a 1 KB API request should be flagged if it transmits 10 MB.
 - For user-installed and journal-generated Gear, implement a probationary period where network activity is monitored more closely.
 - The code review process for the official Gear registry should specifically audit for data exfiltration patterns.
@@ -436,13 +435,13 @@ Beyond the audit log issue (Finding 6), the Right to Deletion specification has 
 
 4. **Semantic cache**: Section 11.1 describes a semantic response cache. Cached responses may contain data from deleted conversations. The cache should be flushed on deletion.
 
-5. **Vector embeddings**: `journal-vectors.db` is not mentioned in the deletion list. Even though embeddings are not trivially invertible (Finding 5), they are derived from personal data and should be deleted.
+5. **Vector embeddings**: Section 7.5 states "Deletes all memory entries (episodic, semantic, procedural)," which arguably encompasses their associated vector embeddings in `journal-vectors.db`. However, this should be made explicit to avoid ambiguity, since the vector database is a separate file that could be overlooked in implementation.
 
 6. **Log files**: Section 12.1 mentions file-based logs at `data/logs/meridian.log`. These may contain user activity information and should be purged on deletion.
 
 ### Recommendation
 
-- Create a comprehensive deletion checklist that covers every data store: `meridian.db`, `journal.db`, `journal-vectors.db`, `sentinel.db`, `audit.db`, `secrets.vault`, `workspace/`, semantic cache, log files, and backups.
+- Create a comprehensive deletion checklist that explicitly names every data store: `meridian.db`, `journal.db`, `journal-vectors.db`, `sentinel.db`, `audit.db`, `secrets.vault`, `workspace/`, semantic cache, log files, and backups.
 - Explicitly inform users that data previously sent to external LLM APIs cannot be recalled, and provide links to each configured provider's data deletion request process.
 - On full deletion, either purge all backups or mark them for accelerated expiry.
 - Implement the deletion as a documented, tested, auditable process -- not an ad hoc collection of DELETE statements.
@@ -457,9 +456,9 @@ Beyond the audit log issue (Finding 6), the Right to Deletion specification has 
 
 The architecture document, despite its thoroughness in technical design, is missing several standard privacy governance artifacts:
 
-1. **Data Flow Diagrams for External APIs**: No visual or structured representation of exactly what data flows to which external service under which conditions. The text descriptions are scattered across multiple sections and require careful reconstruction.
+1. **Data Flow Diagrams for External APIs**: No visual or structured representation of exactly what data flows to which external service under which conditions. The text descriptions are scattered across multiple sections and require careful reconstruction. The interaction diagrams in Section 4.2 show internal component flows but not external data egress.
 
-2. **Privacy Impact Assessment (PIA/DPIA)**: GDPR Article 35 requires a Data Protection Impact Assessment for processing that is "likely to result in a high risk to the rights and freedoms of natural persons." An autonomous AI agent that processes diverse personal data, accesses files, sends emails, and makes decisions on behalf of the user clearly meets this threshold. No DPIA framework is referenced.
+2. **Privacy Impact Assessment (PIA/DPIA)**: GDPR Article 35 requires a Data Protection Impact Assessment for processing that is "likely to result in a high risk to the rights and freedoms of natural persons." An autonomous AI agent that processes diverse personal data, accesses files, sends emails, and makes decisions on behalf of the user likely meets this threshold. No DPIA framework is referenced.
 
 3. **Data Processing Agreement (DPA) Guidance**: Under GDPR Article 28, when a controller (the user) engages a processor (the LLM provider), a DPA is required. The architecture does not help users understand or fulfill this obligation.
 
@@ -469,7 +468,7 @@ The architecture document, despite its thoroughness in technical design, is miss
 
 6. **International Transfer Safeguards**: No mention of GDPR Chapter V requirements when data is sent to US-based LLM providers.
 
-7. **Data Subject Rights Implementation**: Beyond deletion, GDPR grants rights to access (Article 15), rectification (Article 16), restriction (Article 18), and objection (Article 21). Only export (portability, Article 20) and partial deletion (Article 17) are addressed.
+7. **Data Subject Rights Coverage**: Section 5.4.6 already implements several GDPR data subject rights through the memory management UI: access/view (Article 15), rectification/edit (Article 16), portability/export (Article 20), and a form of restriction via the pause feature (Article 18). These are strengths. However, the right to objection (Article 21) -- opting out of specific processing activities like Journal reflection while keeping other features active -- is not addressed. The existing rights implementations should also be documented explicitly as GDPR compliance features, which would strengthen Meridian's regulatory posture.
 
 ### Recommendation
 
@@ -478,7 +477,7 @@ The architecture document, despite its thoroughness in technical design, is miss
 - Provide a DPIA template or checklist that users can complete for their specific deployment.
 - Add a "Privacy Configuration" section in Bridge that allows granular consent for each data processing activity: text processing, voice processing, image processing, memory storage, external API usage.
 - Document the assumed lawful basis for each processing category.
-- Implement data subject rights beyond deletion: access (view all data), rectification (edit memories, already partially implemented), restriction (pause processing, partially addressed by memory pause), and objection (opt out of specific processing like reflection).
+- Explicitly map the existing memory management features (view, edit, delete, export, pause) to their corresponding GDPR articles, and add the right to objection for specific processing activities.
 
 ---
 
@@ -492,15 +491,17 @@ This review would be incomplete without acknowledging what the architecture gets
 
 3. **Encrypted secrets**: AES-256-GCM with Argon2id key derivation is a solid implementation choice. Per-secret ACLs add meaningful access control.
 
-4. **Memory transparency and control**: The ability to view, edit, delete, export, and pause memories is a strong implementation of user agency.
+4. **Memory transparency and control**: The ability to view, edit, delete, export, and pause memories is a strong implementation of user agency that already addresses multiple GDPR data subject rights.
 
 5. **Local model option**: Supporting Ollama for fully offline operation provides a genuine zero-external-transmission path, which most competitors lack.
 
 6. **Information barrier**: The Sentinel isolation design -- while primarily a security feature -- has privacy benefits by limiting how widely user data is disseminated within the system.
 
-7. **Audit trail**: The detailed audit log, while having the metadata issues noted above, gives users unprecedented visibility into what the system does.
+7. **Comprehensive audit trail**: The commitment to logging every external API call including exact content sent (Section 7.3 point 5) gives users unprecedented visibility into what data leaves their device.
 
 8. **SearXNG integration**: Offering a privacy-respecting search engine as the default web search provider is a thoughtful choice.
+
+9. **Explicit acknowledgment of API transmission**: Unlike many "privacy-first" platforms, the architecture explicitly addresses the tension between local storage and external LLM processing in its core principles, privacy section, and audit controls -- rather than ignoring it entirely.
 
 ---
 
@@ -508,16 +509,16 @@ This review would be incomplete without acknowledging what the architecture gets
 
 | # | Finding | Severity | GDPR Articles |
 |---|---------|----------|---------------|
-| 1 | Central privacy paradox: "all data local" contradicts external API dependency | CRITICAL | Art. 5(1)(a), Art. 13 |
-| 2 | "Minimum context principle" is undefined and circular | HIGH | Art. 5(1)(c) |
+| 1 | Privacy framing tension: "all data local" phrasing vs. external API processing reality | HIGH | Art. 5(1)(a), Art. 13 |
+| 2 | Minimum context principle defined with concrete limits but could integrate data classification | MEDIUM | Art. 5(1)(c) |
 | 3 | LLM-based PII stripping is unreliable | HIGH | Art. 5(1)(f), Art. 25 |
-| 4 | LLM provider policies trusted without verification or user support | HIGH | Art. 13, Art. 28, Ch. V |
-| 5 | Embedding inversion resistance is overstated | MEDIUM | Art. 5(1)(f), Art. 32 |
+| 4 | LLM provider data handling policies could be better surfaced to users | MEDIUM | Art. 13, Art. 28, Ch. V |
+| 5 | Embedding inversion resistance is overstated in section header | MEDIUM | Art. 5(1)(f), Art. 32 |
 | 6 | Audit logs contain sensitive metadata despite "no user content" claim | MEDIUM | Art. 17, Recital 26 |
 | 7 | Memory export may contain un-stripped PII | MEDIUM | Art. 5(1)(f), Art. 20 |
-| 8 | Voice data handling is completely unspecified | MEDIUM | Art. 9, Art. 13 |
+| 8 | Voice data handling is unspecified | MEDIUM | Art. 9, Art. 13 |
 | 9 | Image/video privacy handling is absent | MEDIUM | Art. 9, Art. 25 |
-| 10 | Gear can exfiltrate data within allowed permissions | MEDIUM | Art. 5(1)(f), Art. 32 |
+| 10 | Gear can exfiltrate data within allowed permissions (known threat, partially mitigated) | LOW | Art. 5(1)(f), Art. 32 |
 | 11 | Data retention defaults too generous for data minimization | LOW | Art. 5(1)(c), Art. 5(1)(e) |
 | 12 | Right to deletion is incomplete across data stores | LOW | Art. 17 |
 | 13 | Missing standard privacy governance artifacts | LOW | Art. 25, Art. 35, Art. 28 |
@@ -526,8 +527,8 @@ This review would be incomplete without acknowledging what the architecture gets
 
 ## Closing Statement
 
-Meridian is building something that the privacy community genuinely needs: a self-hosted AI assistant that takes user agency seriously. The architecture demonstrates real privacy thinking in many areas, and the local-first, no-telemetry commitments are meaningful differentiators.
+Meridian is building something that the privacy community genuinely needs: a self-hosted AI assistant that takes user agency seriously. The architecture demonstrates real privacy thinking in many areas, and the local-first, no-telemetry, full-audit-trail commitments are meaningful differentiators. Notably, the architecture does not hide the tension between local storage and external API processing -- it addresses it directly in its core principles, provides audit controls for API transmissions, and offers a genuine fully-local path via Ollama.
 
-But privacy claims must be commensurate with privacy reality. The current framing of "privacy as a right" and "all data stays on your device" sets an expectation that the architecture cannot meet when external LLM APIs are in use. This is not a fatal flaw -- it is an honest communication problem. Users deserve to understand the actual privacy tradeoffs they are making, presented clearly and without euphemism.
+The findings in this review are primarily about tightening existing controls, making implicit guarantees explicit, and extending the architecture's privacy thinking to underspecified areas (voice, image/video, audit metadata). The most impactful improvement would be sharpening the lead-sentence framing of Core Principle #2 so that the storage-vs-processing distinction is immediately clear, rather than requiring readers to parse a compound sentence.
 
-The strongest version of Meridian is one that says: "We minimize external data exposure and give you full control, but when you use cloud LLM APIs, your data leaves your device. Here is exactly what is sent, to whom, and what they do with it. If that is unacceptable, here is how to run fully locally." That is a privacy posture worth marketing. The current framing is not.
+The strongest version of Meridian is one that says: "All your data is stored on your device. When you use cloud LLM APIs, portions of your data are transmitted for processing -- here is exactly what is sent, to whom, and what they do with it, logged for your review. If that is unacceptable, here is how to run fully locally with zero external transmission." The architecture already supports this message; the framing should match it.
