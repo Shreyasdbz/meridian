@@ -40,6 +40,7 @@
 **PR Scope**: Initialize the project structure, install dev dependencies, configure all tooling.
 
 **Deliverables**:
+
 - `package.json` with project metadata, scripts, and `"type": "module"` (ESM)
 - `tsconfig.json` targeting ES2022, Node.js 20+, with path aliases (`@meridian/axis`, `@meridian/shared`, etc.)
 - ESLint configuration:
@@ -77,8 +78,8 @@
   tests/security/
   tests/e2e/
   tests/evaluation/    (Section 13.6, populated in Phase 9.7)
-  data/                (gitignored)
-  data/workspace/      (Section 8.2)
+  data/                (gitignored — created at application startup by Axis, not in repo skeleton)
+  data/workspace/      (Section 8.2, created at startup)
   data/workspace/downloads/
   data/workspace/gear/
   data/workspace/projects/
@@ -92,6 +93,7 @@
 - `.npmrc` with `ignore-scripts=true` (supply chain defense per Section 6.1.1)
 
 **Acceptance Criteria**:
+
 - `npm run lint` passes on empty project
 - `npm run typecheck` passes
 - `npm run test` runs Vitest (zero tests, zero failures)
@@ -104,6 +106,7 @@
 **PR Scope**: GitHub Actions CI configuration.
 
 **Deliverables**:
+
 - `.github/workflows/ci.yml`:
   - Runs on every push and PR
   - Matrix: Node.js 20.x on ubuntu-latest
@@ -111,16 +114,20 @@
   - Lockfile integrity check (reject mismatched hashes)
   - `npm audit` for CVE scanning (fail on high/critical)
   - SBOM generation step (Section 6.1.1): generate Software Bill of Materials listing all transitive dependencies with versions and licenses
-- Register `@meridian` npm scope to prevent dependency confusion attacks (Section 6.1.1)
+- Register `@meridian` npm scope to prevent dependency confusion attacks (Section 6.1.1) — **Operational**: requires manual registration on npmjs.org; not a code deliverable
 - `.github/PULL_REQUEST_TEMPLATE.md`
 - `SECURITY.md` with disclosure process (48h acknowledgment, 7-day assessment, 72h critical patch, 90-day coordinated disclosure)
-- `CODE_OF_CONDUCT.md` (Contributor Covenant v2.1)
 - `LICENSE` (Apache-2.0)
+
+**SKIP INTENTIONALLY:**
+
+- `CODE_OF_CONDUCT.md`
 - `CONTRIBUTING.md` referencing conventions from architecture Section 15.3
 
 **Acceptance Criteria**:
+
 - CI runs green on an empty project
-- PRs are blocked if any step fails
+- PRs are blocked if any step fails — **Operational**: requires enabling GitHub branch protection rules (require status checks to pass before merging); not a code deliverable
 
 ---
 
@@ -129,6 +136,7 @@
 **PR Scope**: Core type definitions used across all components.
 
 **Deliverables** (all in `src/shared/`):
+
 - `types.ts` — Core interfaces following the **typed-with-metadata** pattern:
   - `Job` interface (Section 5.1.2): `id`, `status`, `createdAt`, `updatedAt` (required); `conversationId`, `parentId`, `priority`, `source`, `plan`, `validation`, `result`, `error`, `attempts`, `maxAttempts`, `timeoutMs`, `completedAt`, `revisionCount`, `replanCount`, `dedupHash` (typed optional); `metadata` (ad-hoc)
   - `JobStatus` type: `'pending' | 'planning' | 'validating' | 'awaiting_approval' | 'executing' | 'completed' | 'failed' | 'cancelled'`
@@ -215,11 +223,13 @@
 - `index.ts` — Public barrel export for `@meridian/shared`
 
 **Test Deliverables**:
+
 - `src/shared/result.test.ts` — Result type constructor and method tests
 - `src/shared/id.test.ts` — UUID v7 format validation, monotonicity, uniqueness
 - `src/shared/errors.test.ts` — Error class instantiation and code property
 
 **Acceptance Criteria**:
+
 - All types compile cleanly with `strict: true`
 - All tests pass
 - No `any` types used (only `unknown` with narrowing)
@@ -233,6 +243,7 @@
 **Architecture References**: Sections 8.1-8.6 (Data Architecture), 11.1 (SQLite Worker Thread)
 
 **Deliverables** (in `src/shared/`):
+
 - `database/worker.ts` — Dedicated `worker_threads` worker:
   - Owns all SQLite database connections
   - Receives queries via `MessagePort`
@@ -247,6 +258,7 @@
   - All packages use this client — no package opens its own database connections
   - `DatabaseName` type: `'meridian' | 'journal' | 'sentinel' | 'audit'`
 - `database/configure.ts` — `configureConnection(db)` function enforcing PRAGMAs (Section 8.2.1):
+
   ```sql
   PRAGMA journal_mode = WAL;
   PRAGMA synchronous = NORMAL;  -- audit.db overrides to FULL
@@ -255,8 +267,10 @@
   PRAGMA auto_vacuum = INCREMENTAL;
   PRAGMA temp_store = MEMORY;
   ```
+
   - Deployment-tier-aware cache_size and mmap_size settings
   - `audit.db` uses `synchronous = FULL`
+
 - `database/migrator.ts` — Migration framework:
   - Reads numbered SQL files from `src/<module>/migrations/` (e.g., `001_initial.sql`)
   - `schema_version` table per database for tracking
@@ -283,11 +297,13 @@
 - `database/index.ts` — Public API exports
 
 **Test Deliverables**:
+
 - `src/shared/database/client.test.ts` — Worker thread communication, query execution, error handling
 - `src/shared/database/migrator.test.ts` — Migration sequencing, version tracking, transaction rollback on failure, pre-migration backup
 - `src/shared/database/configure.test.ts` — PRAGMA verification
 
 **Acceptance Criteria**:
+
 - Main thread never touches SQLite directly
 - All PRAGMAs applied correctly on connection open
 - Migrations run idempotently (running twice is safe)
@@ -302,6 +318,7 @@
 **Architecture References**: Sections 10.4 (Configuration), 12.1 (Logging Strategy)
 
 **Deliverables**:
+
 - `src/shared/config.ts`:
   - Configuration interface matching `config.toml` schema (Section 10.4). Key sections and defaults:
     - `[axis]`: `workers` (tier-dependent), `job_timeout_ms` (300000)
@@ -327,6 +344,7 @@
 - `src/shared/logger.test.ts` — Redaction of credential patterns, level filtering, structured output format
 
 **Acceptance Criteria**:
+
 - Config loads with sane defaults when no config file exists
 - Logger redacts patterns like `sk-...`, `Bearer ...`, `password=...`
 - Logger output is valid JSON
@@ -340,6 +358,7 @@
 **Architecture References**: Section 6.4 (Secrets Management)
 
 **Deliverables**:
+
 - `src/shared/secrets.ts`:
   - `SecretsVault` class:
     - AES-256-GCM encryption with Argon2id key derivation
@@ -363,6 +382,7 @@
   - Secret ACLs: each secret has `allowedGear: string[]` specifying which Gear can access it
 
 **Test Deliverables**:
+
 - `src/shared/secrets.test.ts`:
   - Encrypt/decrypt round-trip
   - Wrong password fails decryption
@@ -372,6 +392,7 @@
   - Rotation warning detection
 
 **Acceptance Criteria**:
+
 - Secrets never appear as JavaScript strings in the vault implementation
 - No secret values appear in test output or logs
 - ACL enforcement is strict — missing ACL = denied
@@ -391,6 +412,7 @@
 **PR Scope**: In-process message dispatch system with middleware chain.
 
 **Deliverables** (`src/axis/`):
+
 - `router.ts` — Message router:
   - Component registration: each component registers a message handler during startup
   - Typed function dispatch: `dispatch(message: AxisMessage): Promise<AxisMessage>`
@@ -412,6 +434,7 @@
   - Type: `MessageHandler = (message: AxisMessage, signal: AbortSignal) => Promise<AxisMessage>`
 
 **Test Deliverables**:
+
 - `src/axis/router.test.ts`:
   - Message dispatch to registered component
   - Unknown component returns error
@@ -421,6 +444,7 @@
   - Message size rejection/warning
 
 **Acceptance Criteria**:
+
 - No LLM imports anywhere in `src/axis/`
 - Dispatch is type-safe end-to-end
 - Audit middleware logs every dispatch
@@ -432,6 +456,7 @@
 **PR Scope**: SQLite-backed job queue with atomic state transitions.
 
 **Deliverables** (`src/axis/`):
+
 - `job-queue.ts`:
   - SQLite is the queue (no separate in-memory queue)
   - Job creation with UUID v7 IDs
@@ -469,6 +494,7 @@
 **PR Scope**: Prevent duplicate job creation and duplicate step execution.
 
 **Deliverables** (`src/axis/`):
+
 - `dedup.ts` — Request deduplication (Section 5.1.9):
   - SHA-256 hash: `SHA-256(userId + content + floor(timestamp / 5000))`
   - Unique partial index: `CREATE UNIQUE INDEX idx_dedup ON jobs(dedupHash) WHERE status NOT IN ('completed', 'failed', 'cancelled')`
@@ -483,6 +509,7 @@
   - Completion recording: mark `completed` with result after success
 
 **Test Deliverables**:
+
 - `src/axis/dedup.test.ts` — Hash generation, duplicate detection, time window boundaries
 - `src/axis/idempotency.test.ts` — Cached result reuse, crash recovery, new execution path
 
@@ -493,12 +520,14 @@
 **PR Scope**: Configurable worker pool for concurrent job processing with nested timeouts.
 
 **Deliverables** (`src/axis/`):
+
 - `worker-pool.ts`:
   - Configurable concurrent workers (default: 2 Pi, 4 Mac Mini, 8 VPS per Section 5.1.4)
   - Workers claim jobs from SQLite queue via atomic CAS
   - Backpressure: when queue exceeds capacity, new jobs accepted but deprioritized
   - Worker lifecycle: claim → process → release
 - `timeout.ts` — Nested timeout hierarchy (Section 5.1.10):
+
   ```
   Job timeout (default: 300s)
   ├── Planning timeout (default: 60s)
@@ -508,9 +537,11 @@
   └── Execution timeout (remaining budget)
       └── Step timeout (per step, default: 60s)
   ```
+
   - Each inner timeout capped by remaining parent budget
   - Cancellation protocol: signal → 5s grace → force kill
   - `AbortSignal` composition for nested timeout chains
+
 - `error-classifier.ts` — Error classification & retry (Section 5.1.11):
   - Retriable: 429, 500, 502, 503, 504, timeout → exponential backoff (`min(base * 2^attempt + jitter, max)`)
   - Non-retriable credential: 401, 403 → stop, notify user
@@ -519,6 +550,7 @@
   - Backoff formula: `delay = min(1000 * 2^attempt + random(0, 1000), 30000)`
 
 **Test Deliverables**:
+
 - `src/axis/worker-pool.test.ts` — Concurrent processing, backpressure, worker limits
 - `src/axis/timeout.test.ts` — Nested timeout enforcement, cancellation protocol, budget tracking
 - `src/axis/error-classifier.test.ts` — All HTTP status code classifications, backoff calculation
@@ -534,6 +566,7 @@
 > **Dependency Note**: The plan validator checks Gear existence and action validity against a `GearRegistry` interface. In this phase, validation is coded against an injected interface and tested with mock registry data. The concrete `GearRegistry` implementation (Phase 5.1) is wired in during Phase 5.7/8.1 integration.
 
 **Deliverables** (`src/axis/`):
+
 - `plan-validator.ts`:
   - Gear existence: verify every referenced Gear exists in the registry
   - Action existence: verify every action is defined in the referenced Gear's manifest
@@ -546,6 +579,7 @@
   - Failed pre-validation counts against `revisionCount` but does NOT consume a Sentinel LLM call
 
 **Test Deliverables**:
+
 - `src/axis/plan-validator.test.ts`:
   - Missing Gear detection
   - Unknown action detection
@@ -562,6 +596,7 @@
 **PR Scope**: Crash recovery, circuit breaker, watchdog, startup sequence, graceful shutdown.
 
 **Deliverables** (`src/axis/`):
+
 - `recovery.ts` — Crash recovery (Section 5.1.12):
   - On restart: load all non-terminal jobs from SQLite
   - Jobs that were `executing` at crash time: check execution log, mark stale `started` entries as `failed`, return job to `pending`
@@ -595,11 +630,13 @@
     7. Exit code 0
 
 **Test Deliverables**:
+
 - `src/axis/recovery.test.ts` — Stale job detection, re-queue logic
 - `src/axis/watchdog.test.ts` — Event loop block detection
 - `src/axis/lifecycle.test.ts` — Startup sequence ordering, self-diagnostic checks, graceful shutdown state transitions
 
 **Acceptance Criteria**:
+
 - Cold start budget targets measured (Section 11.6): Node.js < 800ms, SQLite < 300ms, migrations < 200ms, Fastify < 200ms, Gear manifests < 300ms, job recovery < 200ms (total < 3s on RPi with SSD)
 - Items lazy-loaded after startup (not blocking cold start): Ollama connection, LLM provider connections, sqlite-vec extension, semantic cache
 
@@ -610,6 +647,7 @@
 **PR Scope**: Append-only audit log with monthly partitioning.
 
 **Deliverables** (`src/axis/`):
+
 - `audit.ts`:
   - Write `AuditEntry` records to `audit-YYYY-MM.db`
   - Append-only: application NEVER issues UPDATE or DELETE on audit entries
@@ -620,6 +658,7 @@
   - Integrity chain fields (`previousHash`, `entryHash`) are defined in schema but populated in v0.3
 
 **Test Deliverables**:
+
 - `src/axis/audit.test.ts`:
   - Entry creation with all required fields
   - Monthly database partitioning
@@ -633,6 +672,7 @@
 **PR Scope**: Wire all Axis sub-systems together and export the public API.
 
 **Deliverables**:
+
 - `src/axis/index.ts` — Public barrel export:
   - `createAxis(config): Axis` — Factory function
   - `Axis` class composing: router, job queue, worker pool, plan validator, recovery, watchdog, audit, lifecycle (circuit breaker added in Phase 9.6)
@@ -643,6 +683,7 @@
   - Worker pool job processing
 
 **Acceptance Criteria**:
+
 - Axis starts and shuts down cleanly
 - Jobs flow through the complete state machine
 - No LLM dependency in any Axis code
@@ -663,6 +704,7 @@
 **PR Scope**: Provider-agnostic LLM interface and the first provider adapter.
 
 **Deliverables** (`src/scout/`):
+
 - `providers/provider.ts` — `LLMProvider` interface implementation:
   - `chat(request: ChatRequest): AsyncIterable<ChatChunk>` (streaming)
   - `estimateTokens(text: string): number`
@@ -683,6 +725,7 @@
   - Provider type detection from config
 
 **Test Deliverables**:
+
 - `src/scout/providers/anthropic.test.ts`:
   - Mock SDK responses
   - Tool use translation (both directions)
@@ -691,6 +734,7 @@
   - Token estimation accuracy
 
 **Acceptance Criteria**:
+
 - Provider interface is truly provider-agnostic
 - Anthropic adapter handles all documented response formats
 - Streaming works with proper timeout enforcement
@@ -704,6 +748,7 @@
 **PR Scope**: OpenAI, Google, Ollama, and OpenRouter provider adapters (v0.2).
 
 **Deliverables** (`src/scout/providers/`):
+
 - `openai.ts` — OpenAI adapter:
   - Uses `openai` SDK
   - Tool use translation: Gear actions → `functions` in `tools` array
@@ -722,6 +767,7 @@
   - Compatible with OpenAI SDK (re-uses OpenAI adapter with different base URL)
 
 **Test Deliverables**:
+
 - Provider-specific unit tests with mock responses
 - Fallback mode (structured-output prompting) tested for Ollama
 
@@ -732,6 +778,7 @@
 **PR Scope**: Core Scout logic — context assembly, plan generation, and fast-path/full-path determination.
 
 **Deliverables** (`src/scout/`):
+
 - `planner.ts` — Plan generation:
   - Receives user message + context → produces `ExecutionPlan` or plain text response
   - System prompt construction (Section 5.2.8):
@@ -766,6 +813,7 @@
   - Repetitive output: fail immediately (model is stuck)
 
 **Test Deliverables**:
+
 - `src/scout/planner.test.ts`:
   - Plan generation with mock LLM returning valid plan JSON
   - Context assembly respects token budgets
@@ -785,6 +833,7 @@
 **PR Scope**: Content tagging and prompt injection defense.
 
 **Deliverables** (`src/scout/`):
+
 - `provenance.ts`:
   - Content wrapping with provenance tags:
     ```
@@ -797,6 +846,7 @@
   - Only `user` source is treated as instructions; all others are DATA
 
 **Test Deliverables**:
+
 - `src/scout/provenance.test.ts`:
   - Correct tag wrapping for each source type
   - Nested content handled correctly
@@ -809,6 +859,7 @@
 **PR Scope**: Wire Scout components together, register with Axis.
 
 **Deliverables**:
+
 - `src/scout/index.ts` — Public API:
   - `createScout(config, provider): Scout`
   - Scout registers as message handler with Axis for `plan.request` messages
@@ -819,6 +870,7 @@
   - System prompt with safety rules (Section 5.2.8)
 
 **Test Deliverables**:
+
 - `tests/integration/scout-axis.test.ts`:
   - Scout registers with Axis
   - Plan request dispatched and response received
@@ -850,6 +902,7 @@
 **PR Scope**: Deterministic policy evaluation against execution plans.
 
 **Deliverables** (`src/sentinel/`):
+
 - `policy-engine.ts`:
   - Evaluates each `ExecutionStep` against default risk policies (Section 5.3.5):
     | Action Type | Default Policy |
@@ -874,6 +927,7 @@
   - Risk divergence logging: if Scout's `riskLevel` diverges more than one level from Sentinel's assessment, log as anomaly
 
 **Test Deliverables**:
+
 - `src/sentinel/policy-engine.test.ts`:
   - Each default policy tested (all 10 action types)
   - Hard floor policies cannot be weakened
@@ -890,6 +944,7 @@
 **PR Scope**: User approval routing and response handling.
 
 **Deliverables** (`src/sentinel/`):
+
 - `approval.ts`:
   - Approval flow implementation (Section 5.3.4):
     - `APPROVED` → Axis executes plan
@@ -905,6 +960,7 @@
     - User reject → transition to `cancelled`
 
 **Test Deliverables**:
+
 - `src/sentinel/approval.test.ts`:
   - Each verdict triggers correct job state transition
   - Revision loop respects `revisionCount` limit
@@ -917,6 +973,7 @@
 **PR Scope**: Wire Sentinel together, register with Axis, enforce information barrier.
 
 **Deliverables**:
+
 - `src/sentinel/index.ts` — Public API:
   - `createSentinel(config): Sentinel`
   - Registers as message handler for `validate.request` messages
@@ -929,12 +986,14 @@
   - `dependency-cruiser` rule: `sentinel/ → journal/` is forbidden
 
 **Test Deliverables**:
+
 - `tests/integration/sentinel-axis.test.ts`:
   - Sentinel registers with Axis
   - Validation request dispatched and response received
   - Information barrier verified (Sentinel handler never receives user message or Journal data)
 
 **Test Deliverables** (security):
+
 - `tests/security/sentinel-barrier.test.ts`:
   - Verify Sentinel cannot access Journal data
   - Verify Sentinel cannot see original user messages
@@ -955,6 +1014,7 @@
 **PR Scope**: Manifest parsing, validation, and the Gear registry in SQLite.
 
 **Deliverables** (`src/gear/`):
+
 - `manifest.ts`:
   - Parse and validate `GearManifest` (Section 5.6.2)
   - JSON Schema validation for all manifest fields
@@ -973,6 +1033,7 @@
   - Built-in Gear auto-registered on first startup (origin: `'builtin'`)
 
 **Test Deliverables**:
+
 - `src/gear/manifest.test.ts`:
   - Valid manifest passes validation
   - Missing required fields rejected
@@ -990,6 +1051,7 @@
 **PR Scope**: `child_process.fork()` sandbox with OS-level restrictions.
 
 **Deliverables** (`src/gear/`):
+
 - `sandbox/process-sandbox.ts` — Level 1 sandbox (Section 5.6.3, ~10-15 MB overhead, 50-150ms cold start):
   - `child_process.fork()` with restricted environment
   - OS-level restrictions:
@@ -1012,6 +1074,7 @@
   - **Output provenance tagging**: gear-host automatically wraps ALL Gear output with `source: "gear:<gear-id>"` provenance tag before returning results to Axis (Section 6.2 LLM01). This is applied uniformly at the host level, not within individual Gear implementations.
 
 **Test Deliverables**:
+
 - `src/gear/sandbox/process-sandbox.test.ts`:
   - Sandbox creation and teardown
   - Filesystem isolation (cannot read outside declared paths)
@@ -1031,6 +1094,7 @@
 **PR Scope**: The constrained API available to Gear code inside the sandbox.
 
 **Deliverables** (`src/gear/`):
+
 - `context.ts` — `GearContext` implementation (Section 9.3):
   - `params`: Read parameters passed to the action
   - `getSecret(name)`: Read allowed secrets (only those declared in manifest, ACL enforced)
@@ -1051,6 +1115,7 @@
   - Marshals results back to host via stdout JSON
 
 **Test Deliverables**:
+
 - `src/gear/context.test.ts`:
   - File operations respect declared paths
   - Undeclared file access rejected
@@ -1067,6 +1132,7 @@
 **PR Scope**: First built-in Gear — file operations within the workspace.
 
 **Deliverables** (`src/gear/builtin/file-manager/`):
+
 - `manifest.json`:
   - id: `file-manager`
   - origin: `builtin`
@@ -1082,6 +1148,7 @@
   - Path traversal prevention: canonicalize all paths, reject `..` sequences
 
 **Test Deliverables**:
+
 - `src/gear/builtin/file-manager/index.test.ts`:
   - All 5 actions work correctly
   - Path traversal attempts blocked
@@ -1094,6 +1161,7 @@
 **PR Scope**: Web page fetching Gear.
 
 **Deliverables** (`src/gear/builtin/web-fetch/`):
+
 - `manifest.json`:
   - id: `web-fetch`
   - origin: `builtin`
@@ -1108,6 +1176,7 @@
   - Provenance tagging on returned content (`source: "gear:web-fetch"`)
 
 **Test Deliverables**:
+
 - `src/gear/builtin/web-fetch/index.test.ts`:
   - Successful page fetch (mock HTTP)
   - Private IP rejection
@@ -1121,6 +1190,7 @@
 **PR Scope**: Shell command execution Gear with special hardening.
 
 **Deliverables** (`src/gear/builtin/shell/`):
+
 - `manifest.json`:
   - id: `shell`
   - origin: `builtin`
@@ -1138,6 +1208,7 @@
   - Large output handling: writes to `data/workspace/` and returns file reference
 
 **Test Deliverables**:
+
 - `src/gear/builtin/shell/index.test.ts`:
   - Command execution with stdout/stderr capture
   - Disabled by default
@@ -1154,6 +1225,7 @@
 **PR Scope**: Wire Gear system together, register with Axis.
 
 **Deliverables**:
+
 - `src/gear/index.ts` — Public API:
   - `createGearRuntime(config): GearRuntime`
   - Registers as message handler with Axis for `execute.request` messages
@@ -1169,6 +1241,7 @@
 - Auto-registration of built-in Gear during startup
 
 **Test Deliverables**:
+
 - `tests/integration/gear-axis.test.ts`:
   - Execute request dispatched through Axis
   - Sandbox created and destroyed
@@ -1190,6 +1263,7 @@
 **PR Scope**: HTTP server setup, security headers, password auth, session management.
 
 **Deliverables** (`src/bridge/api/`):
+
 - `server.ts`:
   - Fastify server creation
   - Bind to `127.0.0.1` by default (Section 6.5)
@@ -1219,6 +1293,7 @@
   - Rate limiting middleware
 
 **Test Deliverables**:
+
 - `src/bridge/api/server.test.ts`:
   - Security headers present on all responses
   - Binds to 127.0.0.1
@@ -1240,6 +1315,7 @@
 **PR Scope**: All REST endpoints with Fastify schema validation.
 
 **Deliverables** (`src/bridge/api/`):
+
 - `routes/messages.ts`:
   - `POST /api/messages` — Send message (creates job via Axis)
   - `GET /api/messages` — List conversation messages (with pagination)
@@ -1283,6 +1359,7 @@
 - All state-changing endpoints require CSRF token
 
 **Test Deliverables**:
+
 - Route-level tests for each endpoint (happy path + error cases)
 - Schema validation tests (malformed input rejected)
 - Authentication required on all endpoints
@@ -1294,6 +1371,7 @@
 **PR Scope**: Real-time event streaming and authenticated WebSocket connections.
 
 **Deliverables** (`src/bridge/api/`):
+
 - `websocket.ts`:
   - WebSocket endpoint at `/api/ws` using `ws` via Fastify plugin
   - Authentication flow (Section 6.5.2):
@@ -1317,6 +1395,7 @@
   - Connection token endpoint: `POST /api/ws/token` (REST endpoint issuing one-time WS tokens)
 
 **Test Deliverables**:
+
 - `src/bridge/api/websocket.test.ts`:
   - Authentication flow (all 5 steps)
   - Message serialization/deserialization for each type
@@ -1331,6 +1410,7 @@
 **PR Scope**: Wire Bridge backend together with Axis, export public API.
 
 **Deliverables**:
+
 - `src/bridge/api/index.ts`:
   - `createBridgeServer(config, axis): BridgeServer`
   - Server connects to Axis for dispatching messages and receiving events
@@ -1342,6 +1422,7 @@
   - Approval requests forwarded via WebSocket `approval_required` message
 
 **Test Deliverables**:
+
 - `tests/integration/bridge-axis.test.ts`:
   - Message submission creates job
   - Job status updates received via WebSocket
@@ -1362,12 +1443,13 @@
 **PR Scope**: Initialize React SPA with build tooling, routing, theme system.
 
 **Deliverables** (`src/bridge/ui/`):
+
 - Vite configuration with React + TypeScript
 - Tailwind CSS setup with dark mode as default (`dark:` variants, respects `prefers-color-scheme`)
 - Zustand store setup (initial empty stores)
 - React Router setup for SPA routing
 - Base layout component with responsive breakpoints:
-  - >= 1280px: side-by-side (conversation left, Mission Control right)
+  - > = 1280px: side-by-side (conversation left, Mission Control right)
   - < 1280px: toggle between views, badge on MC toggle for pending approvals
 - Theme system: dark mode default, light mode toggle
 - Shared UI components: Button, Input, Dialog, Toast, Badge, Spinner, Card
@@ -1376,6 +1458,7 @@
 - TypeScript types shared from `@meridian/shared` (WSMessage, etc.)
 
 **Acceptance Criteria**:
+
 - `npm run dev` serves the SPA at localhost
 - Dark mode renders correctly
 - Responsive layout switches at breakpoint
@@ -1387,6 +1470,7 @@
 **PR Scope**: Four-step first-run setup wizard (Section 5.5.4).
 
 **Deliverables** (`src/bridge/ui/`):
+
 - `pages/onboarding/`:
   - **Step 1 — Create Password** (~30s target):
     - Single password field with strength indicator
@@ -1410,6 +1494,7 @@
 - Onboarding state tracked in `config` table
 
 **Test Deliverables**:
+
 - Component tests for each wizard step
 - Password strength validation
 - API key validation flow
@@ -1421,6 +1506,7 @@
 **PR Scope**: Scrolling message thread with real-time streaming.
 
 **Deliverables** (`src/bridge/ui/`):
+
 - `pages/chat/`:
   - Message list with role-based styling (user, assistant, system)
   - Rich formatting: Markdown rendering, code blocks with syntax highlighting, tables, images
@@ -1443,6 +1529,7 @@
   - Input state
 
 **Test Deliverables**:
+
 - Component tests for message rendering (various content types)
 - Streaming message accumulation
 - Keyboard shortcuts
@@ -1454,6 +1541,7 @@
 **PR Scope**: Spatial, status-oriented view for monitoring and management.
 
 **Deliverables** (`src/bridge/ui/`):
+
 - `pages/mission-control/`:
   - **Active Tasks**: Real-time progress with step trackers (collapsible), elapsed time, progress percentage, Cancel button
   - **Pending Approvals**: Always-visible, prominent placement — actions waiting for user confirmation
@@ -1467,6 +1555,7 @@
   - Job status updates from WebSocket
 
 **Test Deliverables**:
+
 - Component tests for each dashboard section
 - WebSocket status update handling
 - Loading and empty state rendering
@@ -1478,6 +1567,7 @@
 **PR Scope**: User approval UI for Sentinel escalations.
 
 **Deliverables** (`src/bridge/ui/`):
+
 - `components/approval-dialog/`:
   - **Plain-language summary**: Non-technical explanation of what Meridian wants to do
   - **Step checklist**: Each step with color-coded risk indicator (green/yellow/orange/red per risk level)
@@ -1492,6 +1582,7 @@
   - Calls `POST /api/jobs/:id/approve` with per-job nonce
 
 **Test Deliverables**:
+
 - Component tests for approval dialog rendering
 - Risk indicator color mapping
 - Approve/reject API calls
@@ -1504,6 +1595,7 @@
 **PR Scope**: Error display, settings panel, developer mode.
 
 **Deliverables** (`src/bridge/ui/`):
+
 - `components/error-display/`:
   - Brief non-technical explanation
   - "See Details" expandable technical section
@@ -1525,6 +1617,7 @@
   - `Cmd+.` — cancel running task
 
 **Test Deliverables**:
+
 - Error display component tests
 - Settings persistence via API
 - Developer mode toggle behavior
@@ -1536,6 +1629,7 @@
 **PR Scope**: In-app notifications and accessibility foundations.
 
 **Deliverables** (`src/bridge/ui/`):
+
 - `components/notifications/`:
   - In-app toast notifications (always available, Section 5.5.12)
   - Browser push notifications (opt-in via Web Push API)
@@ -1550,6 +1644,7 @@
   - Configurable font size
 
 **Test Deliverables**:
+
 - Toast notification rendering and dismissal
 - Keyboard navigation tests (axe-core or similar)
 - ARIA attribute verification
@@ -1569,6 +1664,7 @@
 **PR Scope**: Connect Axis, Scout, Sentinel, Gear, and Bridge into the complete request lifecycle.
 
 **Deliverables** (`src/`):
+
 - `main.ts` — Application entry point:
   - Instantiates all components
   - Follows startup sequence (Section 5.1.14):
@@ -1604,6 +1700,7 @@
   - Journal database corrupted: continue without memory
 
 **Test Deliverables**:
+
 - `tests/integration/full-pipeline.test.ts`:
   - Message → Job → Scout → Sentinel → Gear → Response (with mock LLM)
   - Fast path flow end-to-end
@@ -1618,6 +1715,7 @@
 **PR Scope**: Implement and test the 3 user story traces from Section 4.7 as acceptance tests.
 
 **Deliverables**:
+
 - `tests/integration/user-stories.test.ts`:
   - **Story 1: Simple Question (Fast Path)**:
     - "What time is it in Tokyo?"
@@ -1646,6 +1744,7 @@
 **PR Scope**: Health checks, metrics endpoint, debugging tools.
 
 **Deliverables**:
+
 - Health endpoint implementation (Section 12.3):
   - `/api/health` returns structured response (Section 12.3): `version`, `uptime_seconds`, per-component `status` (Axis `queue_depth`, Scout `provider`, Sentinel `provider`, Journal `memory_count`, Bridge `active_sessions`)
 - Metrics endpoint (Section 12.2):
@@ -1668,6 +1767,7 @@
 **PR Scope**: Docker image, Docker Compose, deployment documentation.
 
 **Deliverables**:
+
 - `docker/Dockerfile`:
   - Multi-stage build (build + runtime)
   - Node.js 20 LTS base
@@ -1691,6 +1791,7 @@
 **PR Scope**: Final polish, release checklist, documentation.
 
 **Deliverables**:
+
 - `CHANGELOG.md` for v0.1
 - Update mechanism (Section 10.5):
   - `meridian update --check` command (no automatic checks, no telemetry)
@@ -1725,6 +1826,7 @@
 **PR Scope**: Upgrade Sentinel from rule-based to full dual-LLM pipeline.
 
 **Deliverables** (`src/sentinel/`):
+
 - `llm-validator.ts`:
   - LLM-based plan evaluation using the Sentinel's independently configured provider/model
   - Evaluation against all validation categories (Section 5.3.2):
@@ -1739,6 +1841,7 @@
 - Same-provider warning: when Scout and Sentinel use same provider, log warning and show in Bridge
 
 **Test Deliverables**:
+
 - `src/sentinel/llm-validator.test.ts` — Mock LLM returns validation results, structured output parsing
 - `src/sentinel/plan-stripper.test.ts` — All non-required fields removed, required fields preserved
 - `tests/security/sentinel-llm.test.ts`:
@@ -1755,6 +1858,7 @@
 **Architecture References**: Section 6.3
 
 **Deliverables**:
+
 - `src/shared/signing.ts`:
   - Ed25519 keypair generation per component
   - Private keys stored in encrypted vault
@@ -1766,6 +1870,7 @@
 - Update `src/gear/sandbox/` to use ephemeral keypairs
 
 **Test Deliverables**:
+
 - Sign/verify round-trip
 - Reject forged signatures
 - Reject replayed messages
@@ -1778,6 +1883,7 @@
 **PR Scope**: Add web-search, scheduler, and notification Gear.
 
 **Deliverables**:
+
 - `src/gear/builtin/web-search/`:
   - Search via SearXNG or similar privacy-respecting engine
   - Actions: `search` (query → results list)
@@ -1801,6 +1907,7 @@
 **Architecture References**: Section 5.1.5
 
 **Deliverables** (`src/axis/`):
+
 - `scheduler.ts`:
   - Cron-like recurring jobs stored in `schedules` table
   - Evaluation every 60 seconds
@@ -1813,6 +1920,7 @@
   - Create/edit/delete schedule UI
 
 **Test Deliverables**:
+
 - Cron expression parsing
 - Job creation from schedule at correct times
 - Enable/disable behavior
@@ -1826,6 +1934,7 @@
 **Architecture References**: Sections 11.2 (LLM Optimization)
 
 **Deliverables**:
+
 - `src/shared/cost-tracker.ts`:
   - Track token usage per API call (input, output, cached tokens)
   - Aggregate daily/weekly/monthly costs based on provider pricing
@@ -1836,6 +1945,7 @@
 - Provider pricing data: configurable pricing tables per provider/model
 
 **Test Deliverables**:
+
 - Token counting accuracy
 - Cost aggregation calculations
 - Alert threshold triggers
@@ -1848,6 +1958,7 @@
 **PR Scope**: Batch approval, standing rules, circuit breaker (deferred from v0.1), cross-database consistency scanner.
 
 **Deliverables**:
+
 - `src/axis/circuit-breaker.ts` (Section 5.1.12, deferred from v0.1 per Section 16):
   - Track Gear failure counts
   - 3 consecutive failures within 5 minutes → temporarily disable Gear
@@ -1868,6 +1979,7 @@
 **PR Scope**: TLS configuration, monthly audit partitioning, LLM evaluation framework, prompt versioning.
 
 **Deliverables**:
+
 - TLS configuration (Section 6.5.3):
   - Minimum TLS 1.2, prefer 1.3
   - AEAD cipher suites only
@@ -1895,6 +2007,7 @@
 **PR Scope**: Implement the additional LLM providers deferred from Phase 3.2, plus database encryption.
 
 **Deliverables**:
+
 - Implement Phase 3.2 deliverables (OpenAI, Google, Ollama, OpenRouter provider adapters)
 - Sentinel configuration guidance in Bridge: surface recommendations during provider setup (different providers = high security, same provider different model = balanced, same model = budget per Section 5.3.6)
 - Database-level encryption option:
@@ -1911,6 +2024,7 @@
 **PR Scope**: Implement DAG-based parallel step execution, conditional execution, and step output references (all v0.2 per architecture Section 5.2.2).
 
 **Deliverables** (`src/axis/`):
+
 - `dag-executor.ts` — Plan dependencies as DAG (Section 5.2.2):
   - `dependsOn` field fully utilized for step ordering
   - DAG-based execution: Axis computes topological order, dispatches independent steps with maximal parallelism
@@ -1922,6 +2036,7 @@
   - Skipped steps marked as `skipped` (not `failed`)
 
 **Test Deliverables**:
+
 - `src/axis/dag-executor.test.ts`:
   - Topological ordering correctness
   - Parallel execution of independent steps
@@ -1938,6 +2053,7 @@
 **PR Scope**: Final integration, release checklist, and documentation for v0.2.
 
 **Deliverables**:
+
 - `CHANGELOG.md` for v0.2
 - Run full test suite: unit, integration, security, LLM evaluation
 - Verify all v0.2 features integrated and functional:
@@ -1968,6 +2084,7 @@
 **Architecture References**: Section 5.4 (Journal)
 
 **Deliverables** (`src/journal/`):
+
 - `memory-store.ts`:
   - **Episodic memory** — chronological interactions, configurable retention (default 90 days), auto-summarization and archival
   - **Semantic memory** — distilled facts and preferences, persists indefinitely, updated when contradicted
@@ -1990,6 +2107,7 @@
   - Periodic FTS index rebuild during idle maintenance
 
 **Test Deliverables**:
+
 - Memory CRUD for all three types
 - Hybrid search relevance (semantic + keyword fusion)
 - FTS5 sync trigger correctness
@@ -2002,6 +2120,7 @@
 **PR Scope**: Post-task reflection, memory extraction, and Gear Suggester briefs.
 
 **Deliverables** (`src/journal/`):
+
 - `reflector.ts` — Reflection pipeline (Section 5.4.3):
   - LLM-based analysis of completed tasks:
     1. Success or failure? Why?
@@ -2034,6 +2153,7 @@
   - Output stored in `workspace/gear/` with `origin: "journal"`, flagged for user review
 
 **Test Deliverables**:
+
 - Reflection pipeline produces correct memory updates
 - PII reduction catches structured PII (email, phone patterns)
 - Journal-skip respected for simple tasks
@@ -2049,6 +2169,7 @@
 **Architecture References**: Section 5.3.8
 
 **Deliverables** (`src/sentinel/`):
+
 - `memory.ts`:
   - Store user approval/denial decisions in `sentinel.db` (isolated from Journal)
   - Decision matching before LLM validation:
@@ -2068,6 +2189,7 @@
 - Bridge UI: Trust Settings page for viewing/revoking/managing Sentinel Memory decisions
 
 **Test Deliverables**:
+
 - Decision storage and retrieval
 - Matching semantics for each scope type
 - Shell command exclusion
@@ -2084,6 +2206,7 @@
 **Architecture References**: Section 5.6.3
 
 **Deliverables** (`src/gear/sandbox/`):
+
 - `container-sandbox.ts`:
   - Container per Gear execution
   - Read-only root filesystem
@@ -2100,6 +2223,7 @@
 - Sandbox level selection based on Gear manifest and deployment configuration
 
 **Test Deliverables**:
+
 - Container sandbox creation and teardown
 - Resource limit enforcement
 - Filesystem isolation
@@ -2113,6 +2237,7 @@
 **PR Scope**: Manifest signing, backup encryption, audit hash chain.
 
 **Deliverables**:
+
 - Gear signing (Section 5.6.6):
   - Cryptographic signature of manifest + code
   - Signature verification on install and execution
@@ -2137,6 +2262,7 @@
 **PR Scope**: Automated data lifecycle management, user deletion rights, and background maintenance.
 
 **Deliverables**:
+
 - `src/shared/retention.ts` — Data retention enforcement (Section 7.4):
   - Conversation messages: auto-archive after 90 days (configurable)
   - Episodic memories: auto-summarize and archive after 90 days
@@ -2161,6 +2287,7 @@
   - Runs during idle periods (no active jobs)
 
 **Test Deliverables**:
+
 - Retention enforcement: correct archival/deletion by age
 - Right to deletion: complete data purge verification
 - Idle maintenance: runs only when idle, completes correctly
@@ -2172,6 +2299,7 @@
 **PR Scope**: Playwright browser tests, memory management UI, v0.3 release prep.
 
 **Deliverables**:
+
 - `tests/e2e/`:
   - Onboarding flow: password → API key → trust profile → first message
   - Chat flow: send message → see response (fast path)
@@ -2209,6 +2337,7 @@
 **PR Scope**: Activate the Gear Suggester pipeline and implement adaptive model routing.
 
 **Deliverables**:
+
 - Gear Suggester activation (Section 5.4.4):
   - End-to-end flow: task execution → Journal reflection → Gear brief generation → user notification
   - Gear brief review UI in Bridge
@@ -2228,6 +2357,7 @@
 **PR Scope**: MCP integration and the standalone Gear development toolkit.
 
 **Deliverables**:
+
 - MCP compatibility (Section 9.4):
   - Gear-as-MCP-server: expose Gear actions as MCP tools
   - MCP-server-as-Gear: wrap existing MCP servers with Meridian sandboxing
@@ -2244,6 +2374,7 @@
 **PR Scope**: Voice input modality and two-factor authentication.
 
 **Deliverables**:
+
 - Voice input (Section 5.5.9):
   - Web Speech API for recording
   - Whisper API (or local whisper.cpp) for transcription
@@ -2260,6 +2391,7 @@
 **PR Scope**: Performance optimizations via caching, and v0.4 release preparation.
 
 **Deliverables**:
+
 - Plan replay cache:
   - Skip Scout for known patterns (identical plans for repeated scheduled tasks)
   - Cache keyed on normalized plan inputs
@@ -2280,19 +2412,19 @@
 
 Per Section 16, these are explicitly deferred:
 
-| Feature | Status | Notes |
-|---------|--------|-------|
-| Multi-user support | Deferred | Requires auth model rework, RBAC, data isolation per user |
-| Messaging platform integrations (Telegram, Discord, Slack) | Deferred | Would be Gear-based, no core architecture changes needed |
-| Gear marketplace | Deferred | Requires trust infrastructure, review pipeline, hosting |
-| Full local LLM as primary provider | Deferred | Quality may not meet Scout planning requirements on constrained devices |
-| Agent-to-agent federation | Deferred | Requires protocol design, trust model across instances |
-| Proactive behavior | Deferred | Requires event-driven triggering, careful safety design |
-| Video input processing | Deferred | High compute requirement, complex processing pipeline |
-| Full WCAG 2.1 AA accessibility | Deferred | Partial in v0.1 (keyboard, ARIA); full compliance is ongoing effort. Architecture sets WCAG 2.1 AA as a target (Section 5.5.14), tracked as ongoing. |
-| Prometheus metrics export | Deferred | `/api/metrics` endpoint defined but Prometheus-format export is opt-in |
-| Event-driven scheduling | Deferred | Jobs triggered by webhooks, filesystem changes (Section 5.1.5) |
-| `@meridian/cli` package | v0.2+ | Published npm artifact (Section 15.1) — defer until distribution packaging |
+| Feature                                                    | Status   | Notes                                                                                                                                                |
+| ---------------------------------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Multi-user support                                         | Deferred | Requires auth model rework, RBAC, data isolation per user                                                                                            |
+| Messaging platform integrations (Telegram, Discord, Slack) | Deferred | Would be Gear-based, no core architecture changes needed                                                                                             |
+| Gear marketplace                                           | Deferred | Requires trust infrastructure, review pipeline, hosting                                                                                              |
+| Full local LLM as primary provider                         | Deferred | Quality may not meet Scout planning requirements on constrained devices                                                                              |
+| Agent-to-agent federation                                  | Deferred | Requires protocol design, trust model across instances                                                                                               |
+| Proactive behavior                                         | Deferred | Requires event-driven triggering, careful safety design                                                                                              |
+| Video input processing                                     | Deferred | High compute requirement, complex processing pipeline                                                                                                |
+| Full WCAG 2.1 AA accessibility                             | Deferred | Partial in v0.1 (keyboard, ARIA); full compliance is ongoing effort. Architecture sets WCAG 2.1 AA as a target (Section 5.5.14), tracked as ongoing. |
+| Prometheus metrics export                                  | Deferred | `/api/metrics` endpoint defined but Prometheus-format export is opt-in                                                                               |
+| Event-driven scheduling                                    | Deferred | Jobs triggered by webhooks, filesystem changes (Section 5.1.5)                                                                                       |
+| `@meridian/cli` package                                    | v0.2+    | Published npm artifact (Section 15.1) — defer until distribution packaging                                                                           |
 
 ### Feasibility Notes
 
@@ -2375,32 +2507,32 @@ These concerns apply across multiple phases and must be addressed continuously:
 
 This table maps each implementation phase to the architecture sections it addresses:
 
-| Phase | Architecture Sections |
-|-------|----------------------|
-| 1.1 | 14 (Tech Stack), 15.1 (Code Org), 15.3 (Contribution) |
-| 1.2 | 15.3, 15.5 (Governance), 6.1.1 (Supply Chain) |
-| 1.3 | 5.1.2 (Job Model), 5.2.2 (Plan Format), 5.3.3 (Validation), 5.3.8 (Sentinel Memory), 5.4.5 (Memory Query), 5.6.2 (Gear Manifest), 6.6 (Audit), 9.1-9.3 (APIs), 6.2 LLM10 (Token Limits), 11.3-11.4 (Resource Limits) |
-| 1.4 | 8.1-8.6 (Data Architecture), 11.1 (SQLite Worker Thread) |
-| 1.5 | 10.4 (Configuration), 12.1 (Logging) |
-| 1.6 | 6.4 (Secrets Management) |
-| 2.1 | 5.1 (Axis), 9.1 (Internal API), 4.2.2 (Message Bus) |
-| 2.2 | 5.1.2-5.1.3 (Job Model, State Machine), 5.1.6 (Queue) |
-| 2.3 | 5.1.7 (Idempotency), 5.1.9 (Deduplication) |
-| 2.4 | 5.1.4 (Concurrency), 5.1.10 (Timeouts), 5.1.11 (Error Classification) |
-| 2.5 | 5.1.8 (Plan Pre-Validation) |
-| 2.6 | 5.1.12 (Fault Tolerance), 5.1.14-5.1.15 (Startup/Shutdown, Self-Diagnostic) |
-| 2.7 | 6.6 (Audit Logging) |
-| 3.1 | 5.2.4 (LLM Provider), 5.2.5 (Tool Use Translation) |
-| 3.2 | 5.2.4-5.2.5 (Additional Providers — deferred to v0.2) |
-| 3.3 | 5.2.1-5.2.3 (Scout Responsibilities, Plans, Context), 4.3 (Fast/Full Path), 5.2.7 (Failure Modes) |
-| 3.4 | 5.2.8 (Prompt Injection), 6.2 LLM01 (Prompt Injection) |
-| 4.1-4.3 | 5.3 (Sentinel), 5.3.5 (Risk Policies), 5.3.4 (Approval Flow) |
-| 5.1-5.7 | 5.6 (Gear), 9.3 (Gear API), 6.5 (Network Security) |
-| 6.1-6.4 | 5.5 (Bridge), 9.2 (External API), 6.3 (Auth), 6.5 (Network), 7.1 (Privacy), 6.2 LLM02/LLM07 |
-| 7.1-7.7 | 5.5.2-5.5.14 (Bridge UI, all subsections), 7.1 (Privacy Indicator) |
-| 2.8 | 5.1 (Axis) — integration of all sub-systems |
-| 3.5 | 5.2 (Scout) — integration and Axis registration |
-| 8.1-8.5 | 4.5 (Lifecycle), 4.7 (User Stories), 10 (Deployment), 12 (Observability) |
-| 9.1-9.10 | 16 Phase 2 (v0.2 roadmap), 5.3 (Sentinel LLM), 6.3 (Ed25519), 5.2.2 (DAG/Conditions), 5.2.4-5.2.5 (Providers), 8.1.1 (Encryption), 13.6-13.7 (Eval/Prompts), 15.4 (Security Patches) |
-| 10.1-10.7 | 16 Phase 3 (v0.3), 5.4 (Journal), 5.3.8 (Sentinel Memory), 7.4-7.5 (Retention/Deletion), 8.4 (Backup) |
-| 11.1-11.4 | 16 Phase 4 (v0.4), 5.4.4 (Gear Suggester), 5.2.6 (Adaptive Model), 9.4 (MCP), 5.5.9 (Voice) |
+| Phase     | Architecture Sections                                                                                                                                                                                                |
+| --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1.1       | 14 (Tech Stack), 15.1 (Code Org), 15.3 (Contribution)                                                                                                                                                                |
+| 1.2       | 15.3, 15.5 (Governance), 6.1.1 (Supply Chain)                                                                                                                                                                        |
+| 1.3       | 5.1.2 (Job Model), 5.2.2 (Plan Format), 5.3.3 (Validation), 5.3.8 (Sentinel Memory), 5.4.5 (Memory Query), 5.6.2 (Gear Manifest), 6.6 (Audit), 9.1-9.3 (APIs), 6.2 LLM10 (Token Limits), 11.3-11.4 (Resource Limits) |
+| 1.4       | 8.1-8.6 (Data Architecture), 11.1 (SQLite Worker Thread)                                                                                                                                                             |
+| 1.5       | 10.4 (Configuration), 12.1 (Logging)                                                                                                                                                                                 |
+| 1.6       | 6.4 (Secrets Management)                                                                                                                                                                                             |
+| 2.1       | 5.1 (Axis), 9.1 (Internal API), 4.2.2 (Message Bus)                                                                                                                                                                  |
+| 2.2       | 5.1.2-5.1.3 (Job Model, State Machine), 5.1.6 (Queue)                                                                                                                                                                |
+| 2.3       | 5.1.7 (Idempotency), 5.1.9 (Deduplication)                                                                                                                                                                           |
+| 2.4       | 5.1.4 (Concurrency), 5.1.10 (Timeouts), 5.1.11 (Error Classification)                                                                                                                                                |
+| 2.5       | 5.1.8 (Plan Pre-Validation)                                                                                                                                                                                          |
+| 2.6       | 5.1.12 (Fault Tolerance), 5.1.14-5.1.15 (Startup/Shutdown, Self-Diagnostic)                                                                                                                                          |
+| 2.7       | 6.6 (Audit Logging)                                                                                                                                                                                                  |
+| 3.1       | 5.2.4 (LLM Provider), 5.2.5 (Tool Use Translation)                                                                                                                                                                   |
+| 3.2       | 5.2.4-5.2.5 (Additional Providers — deferred to v0.2)                                                                                                                                                                |
+| 3.3       | 5.2.1-5.2.3 (Scout Responsibilities, Plans, Context), 4.3 (Fast/Full Path), 5.2.7 (Failure Modes)                                                                                                                    |
+| 3.4       | 5.2.8 (Prompt Injection), 6.2 LLM01 (Prompt Injection)                                                                                                                                                               |
+| 4.1-4.3   | 5.3 (Sentinel), 5.3.5 (Risk Policies), 5.3.4 (Approval Flow)                                                                                                                                                         |
+| 5.1-5.7   | 5.6 (Gear), 9.3 (Gear API), 6.5 (Network Security)                                                                                                                                                                   |
+| 6.1-6.4   | 5.5 (Bridge), 9.2 (External API), 6.3 (Auth), 6.5 (Network), 7.1 (Privacy), 6.2 LLM02/LLM07                                                                                                                          |
+| 7.1-7.7   | 5.5.2-5.5.14 (Bridge UI, all subsections), 7.1 (Privacy Indicator)                                                                                                                                                   |
+| 2.8       | 5.1 (Axis) — integration of all sub-systems                                                                                                                                                                          |
+| 3.5       | 5.2 (Scout) — integration and Axis registration                                                                                                                                                                      |
+| 8.1-8.5   | 4.5 (Lifecycle), 4.7 (User Stories), 10 (Deployment), 12 (Observability)                                                                                                                                             |
+| 9.1-9.10  | 16 Phase 2 (v0.2 roadmap), 5.3 (Sentinel LLM), 6.3 (Ed25519), 5.2.2 (DAG/Conditions), 5.2.4-5.2.5 (Providers), 8.1.1 (Encryption), 13.6-13.7 (Eval/Prompts), 15.4 (Security Patches)                                 |
+| 10.1-10.7 | 16 Phase 3 (v0.3), 5.4 (Journal), 5.3.8 (Sentinel Memory), 7.4-7.5 (Retention/Deletion), 8.4 (Backup)                                                                                                                |
+| 11.1-11.4 | 16 Phase 4 (v0.4), 5.4.4 (Gear Suggester), 5.2.6 (Adaptive Model), 9.4 (MCP), 5.5.9 (Voice)                                                                                                                          |
