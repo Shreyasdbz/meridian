@@ -157,8 +157,10 @@
   - `MemoryResult` interface (Section 5.4.5): `id`, `type: 'episodic' | 'semantic' | 'procedural'`, `content`, `relevanceScore` (required); `createdAt?`, `updatedAt?`, `source?`, `linkedGearId?` (typed optional); `metadata` (ad-hoc)
   - `Secret` interface (Section 6.4): `name`, `encryptedValue: Buffer`, `allowedGear: string[]`, `createdAt`, `lastUsedAt` (required); `rotateAfterDays?` (typed optional)
   - `LLMProvider` interface (Section 5.2.4): `id`, `name`, `chat()`, `estimateTokens()`, `maxContextTokens`
-  - `ChatRequest`, `ChatChunk` types for LLM streaming
-  - Conversation-related types: `Conversation` (`id`, `title`, `status: 'active' | 'archived'`, `createdAt`, `updatedAt`), `Message` (`id`, `jobId`, `conversationId`, `role`, `content`, `modality`, `attachments`, `createdAt`)
+  - `ChatRequest`, `ChatMessage`, `ChatChunk` types for LLM streaming (`ChatMessage` added to type the `messages` array in `ChatRequest`)
+  - Conversation-related types: `Conversation` (`id`, `title`, `status: 'active' | 'archived'`, `createdAt`, `updatedAt`), `Message` (`id`, `jobId`, `conversationId`, `role`, `content`, `modality`, `attachments`, `createdAt`), `MessageAttachment` (`id`, `name`, `mimeType`, `size`, `path`)
+  - Helper union types extracted for reuse: `RiskLevel`, `JobPriority`, `JobSource`, `ValidationVerdict`, `StepValidationVerdict`, `SentinelVerdict`, `NotificationLevel`, `ExecutionStepStatus`, `FactCategory`, `ProcedureCategory`
+  - Helper interfaces extracted from inline definitions: `StepCondition`, `GearPermissions`, `GearResources`, `FetchOptions`, `FetchResponse`, `JobResult`
 - `constants.ts`:
   - `MAX_REVISION_COUNT = 3` (Section 5.1.3)
   - `MAX_REPLAN_COUNT = 2` (Section 5.1.3)
@@ -216,10 +218,10 @@
   - `Result<T, E>` type for expected failures (validation, parsing)
   - `ok<T>(value: T): Result<T, never>` constructor
   - `err<E>(error: E): Result<never, E>` constructor
-  - `isOk()`, `isErr()`, `unwrap()`, `unwrapOr()`, `map()`, `mapErr()` methods
+  - `isOk()`, `isErr()`, `unwrap()`, `unwrapOr()`, `map()`, `mapErr()` standalone functions (not class methods — implemented as a discriminated union with free functions for idiomatic TypeScript type narrowing via `result is Ok<T>` type guards)
 - `id.ts`:
   - `generateId(): string` — UUID v7 generation (time-sortable)
-  - Dependency: `uuidv7` package or manual implementation per RFC 9562
+  - Manual implementation per RFC 9562 (no external package — reduces supply-chain surface; uses `node:crypto` for randomness)
 - `index.ts` — Public barrel export for `@meridian/shared`
 
 **Test Deliverables**:
