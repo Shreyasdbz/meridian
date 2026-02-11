@@ -13,7 +13,7 @@ Meridian uses a navigation/cartography naming theme. These are the core componen
 | Runtime / Scheduler | **Axis** | Deterministic job scheduler, message router, process supervisor. No LLM dependency. |
 | Planner LLM | **Scout** | Understands intent, decomposes tasks, produces structured execution plans, selects Gear. |
 | Safety Validator | **Sentinel** | Independent LLM that reviews execution plans. Strict information barrier from Scout. |
-| Memory & Gear Builder | **Journal** | Stores/retrieves knowledge (episodic, semantic, procedural). Creates/refines Gear from reflections. |
+| Memory & Learning | **Journal** | Stores/retrieves knowledge (episodic, semantic, procedural). Suggests new Gear from reflections. |
 | User Interface | **Bridge** | Web UI (React SPA) + API gateway. Handles all input/output modalities. |
 | Plugin / Capability | **Gear** | Sandboxed plugins with declarative permission manifests. Three origins: builtin, user, journal. |
 
@@ -27,23 +27,24 @@ See `docs/architecture.md` for full details.
 - **Frontend**: React + TypeScript + Vite + Tailwind CSS + Zustand
 - **HTTP Server**: Fastify
 - **WebSocket**: `ws` via Fastify plugin
-- **Process Sandbox**: `isolated-vm` + seccomp/sandbox-exec
-- **Container Sandbox**: Docker (optional)
+- **Process Sandbox**: `child_process.fork()` + seccomp/sandbox-exec (Level 1), `isolated-vm` (Level 2), Docker (Level 3)
 - **Embeddings (local)**: `nomic-embed-text` via Ollama
 - **Testing**: Vitest (unit/integration), Playwright (e2e)
 - **Linting**: ESLint + Prettier
 - **Bundling**: tsup
-- **Package Manager**: npm workspaces (monorepo)
+- **Module Boundaries**: ESLint `no-restricted-imports` + `dependency-cruiser`
 
 ## Project Structure
 
 ```
-packages/
+src/
   axis/          # Runtime & scheduler (no LLM dependency)
   scout/         # Planner LLM integration
   sentinel/      # Safety validator (isolated from Scout)
-  journal/       # Memory system + Gear Synthesizer
-  bridge/        # UI (src/api/ for backend, src/ui/ for frontend SPA)
+  journal/       # Memory system + Gear Suggester
+  bridge/
+    api/         # Backend API (Fastify)
+    ui/          # Frontend SPA (React)
   gear/          # Plugin runtime + builtin/ directory
   shared/        # Shared types and utilities
 tests/
@@ -53,14 +54,16 @@ tests/
 docs/            # Architecture, idea docs
 ```
 
+Single TypeScript package with directory-based module boundaries. Each module's `index.ts` is its public API.
+
 ## Common Commands
 
-- `npm install` - Install all workspace dependencies
-- `npm run build` - Build all packages
+- `npm install` - Install dependencies
+- `npm run build` - Build the project
 - `npm run dev` - Start development server
 - `npm run test` - Run all tests via Vitest
-- `npm run test -- --run packages/axis/tests/` - Run tests for a single package
-- `npm run lint` - Run ESLint across all packages
+- `npm run test -- --run tests/` - Run tests for a specific directory
+- `npm run lint` - Run ESLint
 - `npm run format` - Run Prettier
 - `npm run typecheck` - Run TypeScript type checking
 
@@ -78,8 +81,8 @@ docs/            # Architecture, idea docs
 
 ## Architecture Patterns
 
-- **Loose schema principle**: Interfaces have a small set of required fields for routing/execution, plus `[key: string]: unknown` for free-form LLM-generated content. Axis only inspects required fields.
-- **Message passing**: All components communicate through Axis using signed messages (HMAC-SHA256). No direct component-to-component calls.
+- **Typed-with-metadata principle**: Interfaces have required fields for routing/execution, typed optional fields for commonly-used properties, and `metadata?: Record<string, unknown>` for genuinely ad-hoc content. Axis only inspects required fields.
+- **Message passing**: Core components communicate through Axis via in-process typed function dispatch (same Node.js process). Gear communicates via JSON over stdin/stdout with HMAC-SHA256 signing (v0.1) or Ed25519 (v0.2).
 - **Information barrier**: Sentinel never sees the user's original message, Journal data, or Gear catalog. Only the execution plan and system policies.
 - **Fast path vs full path**: Simple conversational queries skip Sentinel/Gear entirely. Action-requiring tasks go through the full Scout -> Sentinel -> Gear pipeline.
 - **Journal-skip**: Simple info-retrieval tasks skip reflection. Failures always get reflected on.
@@ -98,11 +101,10 @@ docs/            # Architecture, idea docs
 
 ```
 data/
-  meridian.db           # Core (jobs, config, schedules, gear registry)
-  journal.db            # Memory (episodes, facts, procedures)
-  journal-vectors.db    # Vector embeddings (sqlite-vec)
+  meridian.db           # Core (jobs, conversations, config, schedules, gear registry, execution_log)
+  journal.db            # Memory (episodes, facts, procedures, vector embeddings via sqlite-vec)
   sentinel.db           # Sentinel Memory (isolated approval decisions)
-  audit.db              # Append-only audit log
+  audit-YYYY-MM.db      # Append-only audit log (monthly partitioned)
   secrets.vault         # Encrypted secrets store
   workspace/            # File workspace for Gear operations
 ```
@@ -131,6 +133,8 @@ Meridian uses multiple SQLite databases for isolation. Each has a specific purpo
 
 - SQLite over PostgreSQL: no separate daemon, zero config, portable, sufficient for single-user
 - Dual LLM (Scout + Sentinel): safety over cost. Fast path mitigates cost for simple queries.
-- `isolated-vm` over `vm2`: vm2 is deprecated/archived due to unfixable escape CVEs
+- `child_process.fork()` + seccomp/sandbox-exec as default sandbox (Level 1); `isolated-vm` optional (Level 2); Docker optional (Level 3). `vm2` is deprecated/archived — do not use.
 - Fastify over Express: better performance, built-in schema validation
 - Zustand over Redux: lightweight, minimal boilerplate for single-user UI
+- Single package over npm workspaces: simpler tooling pre-1.0, split when concrete need arises
+- Apache-2.0 license with CLA
