@@ -21,7 +21,8 @@ tsconfig.tsbuildinfo
 *.mjs
 *.cjs
 # Note: only ignore these at package roots where they're build artifacts.
-# If you need to commit specific .mjs/.cjs files, use negation patterns.
+# Negation patterns for config files that use .cjs:
+!.dependency-cruiser.cjs
 
 # ============================================================
 # Environment & secrets (SECURITY: non-negotiable)

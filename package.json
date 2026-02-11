@@ -1,0 +1,42 @@
+{
+  "name": "meridian",
+  "version": "0.1.0",
+  "description": "Open-source, self-hosted AI assistant platform for low-power devices",
+  "type": "module",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsx watch src/index.ts",
+    "test": "vitest",
+    "lint": "eslint --no-error-on-unmatched-pattern src/ tests/",
+    "format": "prettier --write '**/*.ts' --ignore-unknown",
+    "format:check": "prettier --check '**/*.ts' --ignore-unknown",
+    "typecheck": "tsc --noEmit",
+    "validate:boundaries": "depcruise src/ --config .dependency-cruiser.cjs"
+  },
+  "imports": {
+    "@meridian/shared": "./src/shared/index.ts",
+    "@meridian/axis": "./src/axis/index.ts",
+    "@meridian/scout": "./src/scout/index.ts",
+    "@meridian/sentinel": "./src/sentinel/index.ts",
+    "@meridian/journal": "./src/journal/index.ts",
+    "@meridian/bridge": "./src/bridge/index.ts",
+    "@meridian/gear": "./src/gear/index.ts"
+  },
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
+    "dependency-cruiser": "^16.0.0",
+    "eslint": "^9.0.0",
+    "eslint-plugin-import-x": "^4.0.0",
+    "prettier": "^3.0.0",
+    "tsup": "^8.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.5.0",
+    "typescript-eslint": "^8.0.0",
+    "vitest": "^2.0.0"
+  }
+}
