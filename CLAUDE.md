@@ -17,7 +17,7 @@ Meridian uses a navigation/cartography naming theme. These are the core componen
 | User Interface | **Bridge** | Web UI (React SPA) + API gateway. Handles all input/output modalities. |
 | Plugin / Capability | **Gear** | Sandboxed plugins with declarative permission manifests. Three origins: builtin, user, journal. |
 
-See `docs/architecture.md` for full details.
+See `docs/knowledge/architecture.md` for full details.
 
 ## Tech Stack
 
