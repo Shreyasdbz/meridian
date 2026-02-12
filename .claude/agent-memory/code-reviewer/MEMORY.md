@@ -22,6 +22,45 @@
 - Tests cover: all 5 source types, special chars, tag escapes, nested wrapping, unicode, empty/long content
 - Common issue: missing explicit return types on exported functions (found 1 in Phase 3.4)
 
+### Phase 4.3 Sentinel Integration
+- Sentinel class registers with Axis ComponentRegistry as handler for `validate.request` messages
+- Returns `validate.response` with ValidationResult payload
+- Information barrier enforcement at THREE levels:
+  1. Code level: No imports from journal/ or scout/ (ESLint no-restricted-imports + dependency-cruiser)
+  2. Message level: Handler checks for barrier-violating payload keys (BARRIER_VIOLATION_KEYS set)
+  3. Validation level: Only processes ExecutionPlan, ignores all context fields
+- BARRIER_VIOLATION_KEYS: userMessage, conversationHistory, journalData, journalMemories, relevantMemories, gearCatalog, gearManifests, originalMessage
+- Barrier violations logged as warnings but don't block processing (defense-in-depth)
+- Handler validates message.type === 'validate.request' and plan structure (id, jobId, steps[])
+- Factory function `createSentinel(config, deps)` auto-registers with Axis
+- `dispose()` method unregisters from Axis (idempotent)
+- Tests verify: registration, message dispatch, barrier enforcement, identical results with/without smuggled context
+- All 16 integration tests + 15 security tests pass
+
+### Phase 5.2 Process Sandbox (Level 1)
+- Two modules: `process-sandbox.ts` (sandbox lifecycle) and `gear-host.ts` (host-side execution)
+- HMAC-SHA256 message signing with timing-safe comparison (custom implementation, not crypto.timingSafeEqual directly)
+- Secrets injected via tmpfs files (Linux) or temp directory (macOS), NEVER via environment variables
+- Secret Buffers zeroed after injection via `buffer.fill(0)`
+- Signing key zeroed on GearHost shutdown
+- macOS: Seatbelt profiles generated but not enforced via fork() (documentation only in v0.1)
+- Linux: Seccomp profiles generated as JSON metadata (enforcement deferred to future implementation)
+- Memory limits enforced via `--max-old-space-size` Node.js flag
+- Timeout enforced via SIGTERM -> grace period -> SIGKILL pattern
+- Path traversal prevention: `resolve()` + `startsWith()` checks on all filesystem paths
+- Private IP blocking: 10.x, 172.16-31.x, 192.168.x, 127.x, 0.x, localhost, ::1, fe80::/10
+- Domain filtering: exact match, wildcard subdomain (*.example.com), explicit allow-list only
+- Provenance tagging: all Gear output wrapped with `_provenance` object at host level (malicious Gear cannot forge)
+- Environment isolation: minimal PATH, no HOME/USER/SHELL, only explicitly declared vars passed through
+- Sandbox working directory in temp, NOT in workspace (prevents pollution)
+- GearHost.execute() flow: integrity check -> create sandbox -> inject secrets -> send/wait -> verify HMAC -> wrap provenance -> destroy sandbox
+- Integrity check: re-compute SHA-256 checksum before execution, disable Gear on mismatch
+- All 53 unit tests + 39 security tests pass
+- No LLM dependency (verified via grep)
+- No console.log usage (verified via grep)
+- All exported functions have explicit return types (verified)
+- TypeScript compilation passes with no errors
+
 ## Common Issues Found
 
 ### Architecture
@@ -49,6 +88,14 @@
 - `/Users/shreyas/Development/Projects/meridian/tests/integration/axis-lifecycle.test.ts` - Integration tests
 - `/Users/shreyas/Development/Projects/meridian/src/scout/provenance.ts` - External content tagging (Phase 3.4)
 - `/Users/shreyas/Development/Projects/meridian/src/scout/provenance.test.ts` - Provenance tests (43 tests)
+- `/Users/shreyas/Development/Projects/meridian/src/sentinel/sentinel.ts` - Sentinel component (Phase 4.3)
+- `/Users/shreyas/Development/Projects/meridian/src/sentinel/index.ts` - Sentinel public API
+- `/Users/shreyas/Development/Projects/meridian/tests/integration/sentinel-axis.test.ts` - Sentinel-Axis integration (16 tests)
+- `/Users/shreyas/Development/Projects/meridian/tests/security/sentinel-barrier.test.ts` - Information barrier security (15 tests)
+- `/Users/shreyas/Development/Projects/meridian/src/gear/sandbox/process-sandbox.ts` - Level 1 sandbox implementation (Phase 5.2)
+- `/Users/shreyas/Development/Projects/meridian/src/gear/sandbox/gear-host.ts` - Host-side Gear execution (Phase 5.2)
+- `/Users/shreyas/Development/Projects/meridian/src/gear/sandbox/process-sandbox.test.ts` - Sandbox unit tests (53 tests)
+- `/Users/shreyas/Development/Projects/meridian/tests/security/sandbox-escape.test.ts` - Sandbox security tests (39 tests)
 
 ## Testing Patterns
 - Integration tests use temporary directories with random names

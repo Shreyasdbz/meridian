@@ -1158,10 +1158,28 @@
   - Timeout enforcement
   - HMAC signature verification
   - Checksum integrity check
+- `src/gear/sandbox/gear-host.test.ts`:
+  - SHA-256 integrity verification (checksum match, mismatch, disable-on-mismatch)
+  - Full execute flow (integrity → sandbox → protocol → provenance)
+  - Timeout enforcement and sandbox cleanup
+  - Abort signal cancellation
+  - Progress callback forwarding
+  - Gear-level error propagation
+  - Secrets retrieval flow (called/not-called/failure)
+  - Shutdown and active sandbox destruction
+  - Output provenance tagging at host level
+  - Entry point resolution convention
 - `tests/security/sandbox-escape.test.ts`:
   - Attempt to read `/etc/passwd` (should fail)
   - Attempt to access undeclared network (should fail)
   - Attempt to read environment variables for secrets (should fail — secrets are tmpfs files)
+
+**Implementation Notes (v0.1)**:
+
+- **Secrets location**: Implementation uses `os.tmpdir()` instead of `/run/secrets/<name>` for cross-platform compatibility. True tmpfs mounting requires elevated privileges or container setup, deferred to Level 3 (Docker) sandbox. Secrets are still file-based (not env vars) and zeroed after injection.
+- **Seatbelt/seccomp profiles**: Profiles are generated and stored for documentation/audit, but not actively enforced at the OS level via `sandbox-exec` or BPF loading. Active enforcement would require platform-specific spawning (not `fork()`) and privileged operations. Application-level enforcement via `isPathAllowed()` and `isDomainAllowed()` provides the security boundary for v0.1. Full OS-level enforcement is a natural addition when Level 2/Level 3 sandboxes are implemented.
+- **Test coverage exceeded plan**: 53 process-sandbox unit tests + 21 gear-host unit tests + 39 security tests (113 total) vs the 6+3 categories originally specified. Additional coverage includes IPv6, HMAC tampering, provenance tagging, environment isolation, resource limit enforcement, integrity verification, abort cancellation, progress forwarding, secrets flow, and shutdown cleanup.
+- **resolveEntryPoint simplification**: `GearHost.resolveEntryPoint()` returns a deterministic path string (never null). File existence is validated by `createSandbox()` to avoid TOCTOU issues.
 
 ---
 
