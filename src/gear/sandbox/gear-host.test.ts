@@ -243,6 +243,60 @@ function writeErrorGear(gearId: string): string {
 }
 
 /**
+ * Write a Gear that emits log and subjob messages then responds.
+ */
+function writeLogSubjobGear(gearId: string): string {
+  const gearDir = join(gearPackagesDir, gearId);
+  mkdirSync(gearDir, { recursive: true });
+  const entryPoint = join(gearDir, 'index.js');
+  writeFileSync(entryPoint, `
+    process.stdin.setEncoding('utf-8');
+    let buffer = '';
+
+    process.stdin.on('data', (chunk) => {
+      buffer += chunk;
+      let idx;
+      while ((idx = buffer.indexOf('\\n')) !== -1) {
+        const line = buffer.slice(0, idx).trim();
+        buffer = buffer.slice(idx + 1);
+        if (!line) continue;
+
+        try {
+          const request = JSON.parse(line);
+
+          // Emit a log message
+          process.stdout.write(JSON.stringify({
+            type: 'log',
+            gearId: '${gearId}',
+            message: 'Processing step 1',
+          }) + '\\n');
+
+          // Emit a subjob request
+          process.stdout.write(JSON.stringify({
+            type: 'subjob',
+            description: 'Sub-task: analyze data',
+            requestId: 'sub-1',
+          }) + '\\n');
+
+          // Then respond
+          const payload = {
+            correlationId: request.correlationId,
+            result: { processed: true },
+          };
+          const response = { ...payload, hmac: 'unsigned' };
+          process.stdout.write(JSON.stringify(response) + '\\n');
+        } catch (e) {
+          // ignore
+        }
+      }
+    });
+
+    process.stdin.resume();
+  `);
+  return entryPoint;
+}
+
+/**
  * Create a GearHostConfig with reasonable test defaults.
  * The getStoredChecksum function computes a fresh checksum to match.
  */
@@ -278,20 +332,20 @@ describe('GearHost integrity verification', () => {
     const host = new GearHost(config);
     const manifest = createTestManifest({ id: 'check-pass', checksum });
 
-    // Execute will verify integrity first. It will fail later at sandbox
-    // communication, but the integrity check itself should pass.
+    // Execute should succeed end-to-end: integrity passes, sandbox runs,
+    // unsigned HMAC is accepted for v0.1, and the response is returned.
     const result = await host.execute(manifest, {
       gearId: 'check-pass',
       action: 'echo',
-      parameters: {},
+      parameters: { test: 'value' },
       correlationId: 'int-pass-1',
     });
 
-    // The execute may fail for other reasons (HMAC on response) but
-    // should NOT fail with "integrity check failed"
-    if (!result.ok) {
-      expect(result.error).not.toContain('integrity check failed');
-      expect(result.error).not.toContain('checksum mismatch');
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.result.echoed).toEqual({ test: 'value' });
+      expect(result.value.result._provenance).toBeDefined();
+      expect(result.value.source).toBe('gear:check-pass');
     }
 
     await host.shutdown();
@@ -587,19 +641,110 @@ describe('GearHost progress reporting', () => {
       resources: { timeoutMs: 5000 },
     });
 
-    // The response will have 'unsigned' HMAC which will fail verification,
-    // but progress should still be received before the HMAC check
-    await host.execute(manifest, {
+    // With v0.1 unsigned HMAC acceptance, both progress and response succeed
+    const result = await host.execute(manifest, {
       gearId: 'progress-gear',
       action: 'echo',
       parameters: {},
       correlationId: 'exec-progress-1',
     });
 
-    // Progress should have been received (before HMAC failure)
+    // Progress should have been received
     expect(progressCalls.length).toBeGreaterThanOrEqual(1);
     expect(progressCalls[0]?.percent).toBe(50);
     expect(progressCalls[0]?.message).toBe('halfway');
+
+    // Response should succeed
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.result.done).toBe(true);
+    }
+
+    await host.shutdown();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Log message forwarding
+// ---------------------------------------------------------------------------
+
+describe('GearHost log message forwarding', () => {
+  it('should forward log messages from Gear', async () => {
+    writeLogSubjobGear('log-gear');
+    const entryPoint = join(gearPackagesDir, 'log-gear', 'index.js');
+    const checksum = await computeChecksum(entryPoint);
+
+    const logCalls: Array<{ gearId: string; message: string }> = [];
+    const config = createTestConfig({
+      getStoredChecksum: () => Promise.resolve(checksum),
+      onLog: (gearId, message) => {
+        logCalls.push({ gearId, message });
+      },
+    });
+    const host = new GearHost(config);
+    const manifest = createTestManifest({
+      id: 'log-gear',
+      checksum,
+      resources: { timeoutMs: 5000 },
+    });
+
+    const result = await host.execute(manifest, {
+      gearId: 'log-gear',
+      action: 'test',
+      parameters: {},
+      correlationId: 'exec-log-1',
+    });
+
+    // Log should have been received
+    expect(logCalls.length).toBeGreaterThanOrEqual(1);
+    expect(logCalls[0]?.gearId).toBe('log-gear');
+    expect(logCalls[0]?.message).toBe('Processing step 1');
+
+    // Response should succeed
+    expect(result.ok).toBe(true);
+
+    await host.shutdown();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Sub-job request forwarding
+// ---------------------------------------------------------------------------
+
+describe('GearHost sub-job request forwarding', () => {
+  it('should forward sub-job requests from Gear', async () => {
+    writeLogSubjobGear('subjob-gear');
+    const entryPoint = join(gearPackagesDir, 'subjob-gear', 'index.js');
+    const checksum = await computeChecksum(entryPoint);
+
+    const subjobCalls: Array<{ description: string; requestId: string }> = [];
+    const config = createTestConfig({
+      getStoredChecksum: () => Promise.resolve(checksum),
+      onSubJob: (description, requestId) => {
+        subjobCalls.push({ description, requestId });
+      },
+    });
+    const host = new GearHost(config);
+    const manifest = createTestManifest({
+      id: 'subjob-gear',
+      checksum,
+      resources: { timeoutMs: 5000 },
+    });
+
+    const result = await host.execute(manifest, {
+      gearId: 'subjob-gear',
+      action: 'test',
+      parameters: {},
+      correlationId: 'exec-subjob-1',
+    });
+
+    // Sub-job request should have been forwarded
+    expect(subjobCalls.length).toBeGreaterThanOrEqual(1);
+    expect(subjobCalls[0]?.description).toBe('Sub-task: analyze data');
+    expect(subjobCalls[0]?.requestId).toBe('sub-1');
+
+    // Response should succeed
+    expect(result.ok).toBe(true);
 
     await host.shutdown();
   });
@@ -632,10 +777,12 @@ describe('GearHost Gear-level errors', () => {
       correlationId: 'exec-error-1',
     });
 
-    // Response will fail HMAC (unsigned), so it'll be an HMAC error
-    // rather than the Gear error — this is correct security behavior:
-    // unsigned responses are rejected at the protocol level
+    // With v0.1 unsigned HMAC acceptance, the Gear error is propagated
     expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toContain('Something broke');
+      expect(result.error).toContain('GEAR_ERROR');
+    }
 
     await host.shutdown();
   });

@@ -1178,8 +1178,11 @@
 
 - **Secrets location**: Implementation uses `os.tmpdir()` instead of `/run/secrets/<name>` for cross-platform compatibility. True tmpfs mounting requires elevated privileges or container setup, deferred to Level 3 (Docker) sandbox. Secrets are still file-based (not env vars) and zeroed after injection.
 - **Seatbelt/seccomp profiles**: Profiles are generated and stored for documentation/audit, but not actively enforced at the OS level via `sandbox-exec` or BPF loading. Active enforcement would require platform-specific spawning (not `fork()`) and privileged operations. Application-level enforcement via `isPathAllowed()` and `isDomainAllowed()` provides the security boundary for v0.1. Full OS-level enforcement is a natural addition when Level 2/Level 3 sandboxes are implemented.
-- **Test coverage exceeded plan**: 53 process-sandbox unit tests + 21 gear-host unit tests + 39 security tests (113 total) vs the 6+3 categories originally specified. Additional coverage includes IPv6, HMAC tampering, provenance tagging, environment isolation, resource limit enforcement, integrity verification, abort cancellation, progress forwarding, secrets flow, and shutdown cleanup.
+- **Test coverage exceeded plan**: 53 process-sandbox unit tests + 23 gear-host unit tests + 39 security tests (115 total) vs the 6+3 categories originally specified. Additional coverage includes IPv6, HMAC tampering, provenance tagging, environment isolation, resource limit enforcement, integrity verification, abort cancellation, progress forwarding, log message forwarding, sub-job request forwarding, secrets flow, and shutdown cleanup.
 - **resolveEntryPoint simplification**: `GearHost.resolveEntryPoint()` returns a deterministic path string (never null). File existence is validated by `createSandbox()` to avoid TOCTOU issues.
+- **HMAC v0.1 acceptance**: GearHost accepts `hmac: 'unsigned'` responses from the sandbox runtime with a warning log, since the HMAC signing key is not passed to the child process. In v0.2, Ed25519 per-component key pairs will enable full bidirectional verification.
+- **Log and sub-job forwarding**: GearHost handles `type: 'log'` and `type: 'subjob'` stdout messages from the sandbox runtime, forwarding them to `LogCallback` and `SubJobCallback` respectively. Sub-job handling in v0.1 is fire-and-forget; full routing through Axis is deferred to v0.2.
+- **buildSandboxEnv extended**: Accepts optional `gearEntryPoint` parameter and sets `MERIDIAN_GEAR_ENTRY_POINT` env var for the sandbox runtime. This enables gear-runtime.ts to dynamically import the correct Gear module.
 
 ---
 
@@ -1223,11 +1226,15 @@
 
 - Architecture Section 9.3 `GearContext.fetch()` return type clarified from `Response` to `FetchResponse` (defined in `shared/types.ts` with `status`, `headers`, `body` fields)
 - Two implementations of GearContext exist by design: `GearContextImpl` (host-side, in `context.ts`) provides the canonical validation logic; `gear-runtime.ts` duplicates this logic for sandbox isolation since it cannot import from `@meridian/*`
+- `GearContextImpl` explicitly `implements GearContext` (the interface from `shared/types.ts`) for type safety
 - Manifest permissions are passed to the sandbox runtime via `MERIDIAN_GEAR_PERMISSIONS` env variable (JSON-encoded), set by `buildSandboxEnv()` in `process-sandbox.ts`
-- v0.1 limitation: HMAC signing in the sandbox runtime is deferred — responses are sent with `hmac: 'unsigned'`; the host-side GearHost handles verification. Ed25519 per-component signing in v0.2 will enable bidirectional verification
+- Gear entry point path is passed to the sandbox runtime via `MERIDIAN_GEAR_ENTRY_POINT` env variable (set by `buildSandboxEnv()`), with fallback to `process.argv[2]` for direct invocation. The runtime dynamically imports and calls the Gear's `execute()` function.
+- v0.1 limitation: HMAC signing in the sandbox runtime is deferred — responses are sent with `hmac: 'unsigned'`; the host-side GearHost accepts unsigned responses with a warning log. Ed25519 per-component signing in v0.2 will enable bidirectional verification.
 - v0.1 limitation: `createSubJob` in the sandbox runtime is fire-and-forget — sends a `subjob` message to the host via stdout and returns immediately with `status: 'pending'`. Full request-response sub-job support requires bidirectional IPC messaging (v0.2)
 - Private IP filtering covers ranges beyond the spec minimum: 0.0.0.0/8, 169.254.0.0/16 (link-local), IPv6 loopback (::1), IPv6 link-local (fe80::/10), and IPv4-mapped IPv6 addresses (::ffff:x.x.x.x)
 - `DnsResolver` type is injectable for deterministic testing of DNS rebinding prevention
+- GearHost handles all sandbox stdout message types: `progress` (forwarded to ProgressCallback), `log` (forwarded to LogCallback), and `subjob` (forwarded to SubJobCallback). These callbacks are configured via `GearHostConfig`.
+- v0.1 design: GearHost currently forks the Gear's entry point directly (not gear-runtime.ts). Test Gears implement inline stdin/stdout handlers. When built-in Gears are implemented in Phase 5.4-5.6, they will export `execute()` functions and be loaded by gear-runtime.ts. The `MERIDIAN_GEAR_ENTRY_POINT` env var enables this transition.
 - Test coverage: 77 tests across 11 describe blocks (exceeds the 7 categories specified above)
 
 ---

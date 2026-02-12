@@ -306,6 +306,7 @@ export function buildSandboxEnv(
   manifest: GearManifest,
   sandboxDir: string,
   secretsDir: string | null,
+  gearEntryPoint?: string,
 ): Record<string, string> {
   const env: Record<string, string> = {
     // Minimal PATH for Node.js runtime
@@ -323,6 +324,12 @@ export function buildSandboxEnv(
 
   if (secretsDir) {
     env['MERIDIAN_SECRETS_DIR'] = secretsDir;
+  }
+
+  // Gear entry point for the sandbox runtime to load and execute.
+  // When gear-runtime.ts is the fork target, it reads this to find the Gear module.
+  if (gearEntryPoint) {
+    env['MERIDIAN_GEAR_ENTRY_POINT'] = gearEntryPoint;
   }
 
   // Pass manifest permissions so the runtime can enforce them
@@ -435,7 +442,7 @@ export function createSandbox(options: SandboxOptions): Result<SandboxHandle, st
     : null;
 
   // Build restricted environment
-  const env = buildSandboxEnv(manifest, sandboxDir, secretsDir);
+  const env = buildSandboxEnv(manifest, sandboxDir, secretsDir, entryPoint);
 
   // Build fork options
   const forkOptions: Record<string, unknown> = {

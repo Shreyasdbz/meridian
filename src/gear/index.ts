@@ -44,6 +44,8 @@ export type {
   GearExecutionResult,
   ExecuteActionOptions,
   ProgressCallback,
+  LogCallback,
+  SubJobCallback,
   GearHostConfig,
 } from './sandbox/gear-host.js';
 

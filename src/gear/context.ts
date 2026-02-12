@@ -9,6 +9,7 @@ import { resolve, relative, sep } from 'node:path';
 import type {
   FetchOptions,
   FetchResponse,
+  GearContext,
   GearManifest,
   GearPermissions,
   JobResult,
@@ -288,7 +289,7 @@ export async function checkDnsRebinding(
  * - Secret ACL (only manifest-declared secrets accessible)
  * - Sub-job routing through Axis (full Scout -> Sentinel -> Gear pipeline)
  */
-export class GearContextImpl {
+export class GearContextImpl implements GearContext {
   readonly params: Record<string, unknown>;
 
   private readonly manifest: GearManifest;

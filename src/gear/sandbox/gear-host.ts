@@ -64,6 +64,16 @@ export interface ExecuteActionOptions {
 export type ProgressCallback = (percent: number, message?: string) => void;
 
 /**
+ * Callback for receiving log messages from a running Gear.
+ */
+export type LogCallback = (gearId: string, message: string) => void;
+
+/**
+ * Callback for handling sub-job requests from a running Gear.
+ */
+export type SubJobCallback = (description: string, requestId: string) => void;
+
+/**
  * Configuration for the GearHost.
  */
 export interface GearHostConfig {
@@ -75,6 +85,10 @@ export interface GearHostConfig {
   logger?: SandboxLogger;
   /** Callback for progress updates. */
   onProgress?: ProgressCallback;
+  /** Callback for log messages from Gear. */
+  onLog?: LogCallback;
+  /** Callback for sub-job requests from Gear. */
+  onSubJob?: SubJobCallback;
   /** Function to retrieve the stored checksum for a Gear. */
   getStoredChecksum: (gearId: string) => Promise<string>;
   /** Function to disable a Gear in the registry. */
@@ -344,6 +358,22 @@ export class GearHost {
               continue;
             }
 
+            // Handle log messages from Gear
+            if (message['type'] === 'log') {
+              const gearId = message['gearId'] as string;
+              const logMessage = message['message'] as string;
+              this.config.onLog?.(gearId, logMessage);
+              continue;
+            }
+
+            // Handle sub-job requests from Gear (fire-and-forget in v0.1)
+            if (message['type'] === 'subjob') {
+              const description = message['description'] as string;
+              const requestId = message['requestId'] as string;
+              this.config.onSubJob?.(description, requestId);
+              continue;
+            }
+
             // Handle response
             const response = message as unknown as SandboxResponse;
             if (response.correlationId !== correlationId) {
@@ -354,9 +384,16 @@ export class GearHost {
               continue;
             }
 
-            // Verify HMAC signature
+            // Verify HMAC signature.
+            // v0.1: The sandbox runtime does not have the signing key, so it
+            // sends hmac: 'unsigned'. Accept this for v0.1 with a warning.
+            // v0.2 with Ed25519 per-component keys will enable bidirectional signing.
             const { hmac: responseHmac, ...payload } = response;
-            if (!verifySignature(payload as Record<string, unknown>, responseHmac, handle.signingKey)) {
+            if (responseHmac === 'unsigned') {
+              logger?.warn('Accepting unsigned response from sandbox (v0.1 limitation)', {
+                correlationId,
+              });
+            } else if (!verifySignature(payload as Record<string, unknown>, responseHmac, handle.signingKey)) {
               settle(err('Response HMAC verification failed'));
               return;
             }

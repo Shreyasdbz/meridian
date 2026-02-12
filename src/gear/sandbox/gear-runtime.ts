@@ -565,12 +565,18 @@ async function processRequest(
       permissions,
     );
 
-    // Load and execute the Gear module
-    const entryPoint = process.argv[1];
+    // Load and execute the Gear module.
+    // The Gear entry point is passed via MERIDIAN_GEAR_ENTRY_POINT env var
+    // (set by buildSandboxEnv in process-sandbox.ts). Falls back to
+    // process.argv[2] for direct invocation (e.g., testing).
+    const entryPoint = process.env['MERIDIAN_GEAR_ENTRY_POINT'] ?? process.argv[2];
     if (!entryPoint) {
       sendResponse({
         correlationId,
-        error: { code: 'RUNTIME_ERROR', message: 'No entry point found' },
+        error: {
+          code: 'RUNTIME_ERROR',
+          message: 'No Gear entry point found. Set MERIDIAN_GEAR_ENTRY_POINT env var.',
+        },
         hmac: 'unsigned',
       });
       return;
