@@ -11,10 +11,16 @@ import type { DatabaseClient } from './client.js';
 import type { DatabaseName } from './types.js';
 
 /**
- * Mapping of database names to their migration directories.
- * Paths are relative to the project root.
+ * Base database names (excludes monthly audit partitions like 'audit-2026-02').
  */
-const DEFAULT_MIGRATION_DIRS: Record<DatabaseName, string> = {
+type BaseDatabaseName = 'meridian' | 'journal' | 'sentinel' | 'audit';
+
+/**
+ * Mapping of base database names to their migration directories.
+ * Paths are relative to the project root.
+ * Audit partitions (audit-YYYY-MM) share the 'audit' migration directory.
+ */
+const DEFAULT_MIGRATION_DIRS: Record<BaseDatabaseName, string> = {
   meridian: 'src/axis/migrations',
   journal: 'src/journal/migrations',
   sentinel: 'src/sentinel/migrations',
@@ -41,10 +47,12 @@ export interface MigrationResult {
 export function discoverMigrations(
   db: DatabaseName,
   projectRoot: string,
-  migrationDirs?: Partial<Record<DatabaseName, string>>,
+  migrationDirs?: Partial<Record<BaseDatabaseName, string>>,
 ): MigrationFile[] {
   const dirs = { ...DEFAULT_MIGRATION_DIRS, ...migrationDirs };
-  const dir = resolve(projectRoot, dirs[db]);
+  // Audit partitions (audit-YYYY-MM) share the 'audit' migration directory
+  const baseDb: BaseDatabaseName = db.startsWith('audit') ? 'audit' : db as BaseDatabaseName;
+  const dir = resolve(projectRoot, dirs[baseDb]);
 
   if (!existsSync(dir)) {
     return [];
@@ -113,7 +121,7 @@ export async function migrate(
   db: DatabaseName,
   projectRoot: string,
   options?: {
-    migrationDirs?: Partial<Record<DatabaseName, string>>;
+    migrationDirs?: Partial<Record<BaseDatabaseName, string>>;
     backupDir?: string;
   },
 ): Promise<MigrationResult> {
@@ -172,7 +180,7 @@ export async function migrateAll(
   client: DatabaseClient,
   projectRoot: string,
   options?: {
-    migrationDirs?: Partial<Record<DatabaseName, string>>;
+    migrationDirs?: Partial<Record<BaseDatabaseName, string>>;
     backupDir?: string;
     databases?: DatabaseName[];
   },

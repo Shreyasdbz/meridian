@@ -105,3 +105,13 @@ export type {
   StartupStepHandler,
   ShutdownHandler,
 } from './lifecycle.js';
+
+// Audit logging (Sections 6.6, 8.6)
+export { AuditLog, getAuditDbFileName } from './audit.js';
+export type {
+  AuditLogger,
+  AuditLogOptions,
+  AuditExportResult,
+  QueryAuditOptions,
+  WriteAuditEntryOptions,
+} from './audit.js';

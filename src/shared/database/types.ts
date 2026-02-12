@@ -7,7 +7,7 @@
  * - sentinel: Sentinel Memory (isolated approval decisions)
  * - audit: Append-only audit log (monthly partitioned: audit-YYYY-MM.db)
  */
-export type DatabaseName = 'meridian' | 'journal' | 'sentinel' | 'audit';
+export type DatabaseName = 'meridian' | 'journal' | 'sentinel' | 'audit' | `audit-${string}`;
 
 /**
  * Deployment tier affects PRAGMA tuning (cache_size, mmap_size).

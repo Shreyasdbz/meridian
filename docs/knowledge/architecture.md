@@ -2108,7 +2108,7 @@ data/
 ├── meridian.db           # Core database (jobs, configuration, schedules)
 ├── journal.db            # Memory system (episodes, semantic, procedural, vector embeddings)
 ├── sentinel.db           # Sentinel Memory (isolated approval decisions)
-├── audit.db              # Append-only audit log
+├── audit-YYYY-MM.db      # Append-only audit log (monthly partitioned)
 ├── secrets.vault         # Encrypted secrets store
 └── workspace/            # File workspace for Gear operations
     ├── downloads/
@@ -2125,7 +2125,7 @@ Every database connection **must** set these PRAGMAs at open time. The `configur
 
 ```sql
 PRAGMA journal_mode = WAL;          -- Write-Ahead Logging for concurrent reads
-PRAGMA synchronous = NORMAL;        -- Safe with WAL (audit.db uses FULL)
+PRAGMA synchronous = NORMAL;        -- Safe with WAL (audit databases use FULL)
 PRAGMA busy_timeout = 5000;         -- Wait up to 5s for locks instead of failing immediately
 PRAGMA foreign_keys = ON;           -- OFF by default in SQLite — must be explicitly enabled
 PRAGMA auto_vacuum = INCREMENTAL;   -- Must be set before database has data
@@ -2139,7 +2139,7 @@ Tunable per deployment tier:
 | `cache_size` | `-20000` (~20 MB) | `-8000` (~8 MB) |
 | `mmap_size` | `268435456` (256 MB) | `67108864` (64 MB) |
 
-Exception: `audit.db` uses `synchronous = FULL` because audit integrity is non-negotiable — a crash must never lose an audit entry.
+Exception: Audit databases (`audit-YYYY-MM.db`) use `synchronous = FULL` because audit integrity is non-negotiable — a crash must never lose an audit entry.
 
 ### 8.3 Schema Overview
 
@@ -2349,7 +2349,7 @@ SQLite does not support cross-database foreign keys or transactions. Since Merid
 1. **Write-ahead audit**: Write the audit entry before committing the primary action. If the action commit fails, the audit entry records an attempted-but-uncommitted action (harmless). If the audit write fails, the action is aborted.
 2. **Consistency scanner**: During idle maintenance, a periodic scanner detects orphaned references across databases (e.g., a `job_id` in `journal.db` that no longer exists in `meridian.db`). Orphans are flagged for review, never auto-deleted.
 3. **No ATTACH in production**: Cross-database `ATTACH` queries are not used for production operations. Each database is accessed through its own connection.
-4. **Application-managed cascades**: When deleting a job from `meridian.db`, the application explicitly deletes related records in `journal.db` and `audit.db` (audit entries are never deleted — only the cross-reference is cleaned).
+4. **Application-managed cascades**: When deleting a job from `meridian.db`, the application explicitly deletes related records in `journal.db` and audit databases (audit entries are never deleted — only the cross-reference is cleaned).
 
 ---
 
