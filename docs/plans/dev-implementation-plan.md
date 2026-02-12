@@ -1306,6 +1306,13 @@
   - Content size limit enforcement
   - Provenance tagging on output
 
+**Implementation Notes**:
+
+- **Provenance tagging delegated to GearHost**: The plan specifies provenance tagging on returned content (`source: "gear:web-fetch"`). GearHost (Phase 5.2) already wraps all Gear output with `_provenance: { source: "gear:web-fetch", action, correlationId, timestamp }` at `gear-host.ts:208-215`. Adding `_provenance` within the Gear would be overwritten by GearHost's spread-then-assign pattern. The Gear instead provides URL-specific content traceability fields (`sourceUrl`, `fetchedAt`) that GearHost cannot provide. The plan's provenance requirement is satisfied by GearHost's execution-level provenance tagging. No architecture deviation — this correctly respects the GearHost's responsibility per Section 5.6.3.
+- **Additional capabilities beyond plan**: `fetch_json` supports HTTP methods (POST, PUT, PATCH, DELETE), custom headers, and request body. `fetch_page` supports customizable `maxSizeBytes` parameter (default 5MB). HTML text extraction includes script/style removal, entity decoding, and whitespace normalization.
+- **Validation fixes applied**: (1) `byteLength` in `fetch_page` now reports the byte length of the returned content (extracted text), not the raw HTML response — was a data accuracy bug when `extractText: true`. (2) `fetch_json` `data` field accepts any valid JSON value (object, array, string, number, boolean, null) — manifest schema updated to remove `"type": "object"` restriction. (3) JSON parse error messages no longer include response body content to prevent potential sensitive data leakage in logs per security rules. (4) Parameter helper `optionalString` split into `optionalString` (with required default) and `optionalStringOrUndefined` to match file-manager pattern and eliminate unsafe `as string` cast.
+- **Additional test coverage**: 45 tests (vs. 4 required): manifest validation, text extraction, error handling, logging, HTTP method support, content traceability verification, explicit assertion that `_provenance` is not set by the Gear, multi-byte UTF-8 content size enforcement, non-object JSON responses (arrays, primitives, null), byteLength accuracy with text extraction, and error message sanitization.
+
 ---
 
 ### Phase 5.6: Built-in Gear — shell
