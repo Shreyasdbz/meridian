@@ -5,6 +5,10 @@ import type { LLMProvider } from '@meridian/shared';
 import { LLMProviderError } from '@meridian/shared';
 
 import { AnthropicProvider } from './anthropic.js';
+import { GoogleProvider } from './google.js';
+import { OllamaProvider } from './ollama.js';
+import { OpenAIProvider } from './openai.js';
+import { OpenRouterProvider } from './openrouter.js';
 import type { ProviderConfig, ProviderType } from './provider.js';
 
 // ---------------------------------------------------------------------------
@@ -13,8 +17,7 @@ import type { ProviderConfig, ProviderType } from './provider.js';
 
 /**
  * Creates an LLMProvider from a ProviderConfig.
- * In v0.1, only the Anthropic provider is supported.
- * Other providers (openai, google, ollama, openrouter) are deferred to v0.2 (Phase 9).
+ * Supports all configured providers: anthropic, openai, google, ollama, openrouter.
  */
 export function createProvider(config: ProviderConfig): LLMProvider {
   switch (config.type) {
@@ -22,12 +25,16 @@ export function createProvider(config: ProviderConfig): LLMProvider {
       return new AnthropicProvider(config);
 
     case 'openai':
+      return new OpenAIProvider(config);
+
     case 'google':
+      return new GoogleProvider(config);
+
     case 'ollama':
+      return new OllamaProvider(config);
+
     case 'openrouter':
-      throw new LLMProviderError(
-        `Provider "${config.type}" is not yet supported. Only "anthropic" is available in v0.1.`,
-      );
+      return new OpenRouterProvider(config);
 
     default:
       throw new LLMProviderError(
@@ -40,7 +47,13 @@ export function createProvider(config: ProviderConfig): LLMProvider {
  * Detects provider type from a ScoutConfig. Validates the provider name.
  */
 export function resolveProviderType(provider: string): ProviderType {
-  const valid: ProviderType[] = ['anthropic', 'openai', 'google', 'ollama', 'openrouter'];
+  const valid: ProviderType[] = [
+    'anthropic',
+    'openai',
+    'google',
+    'ollama',
+    'openrouter',
+  ];
   if (valid.includes(provider as ProviderType)) {
     return provider as ProviderType;
   }
@@ -49,6 +62,40 @@ export function resolveProviderType(provider: string): ProviderType {
 
 // Re-exports
 export { AnthropicProvider } from './anthropic.js';
+export {
+  toAnthropicTools,
+  toAnthropicMessages,
+  parseToolUseBlock,
+} from './anthropic.js';
+
+export { OpenAIProvider } from './openai.js';
+export {
+  toOpenAITools,
+  toOpenAIMessages,
+  parseOpenAIToolCall,
+  openAIStreamingChat,
+  openAIEstimateTokens,
+} from './openai.js';
+
+export { GoogleProvider } from './google.js';
+export {
+  toGoogleTools,
+  toGoogleMessages,
+  parseGoogleFunctionCall,
+  resetToolCallCounter as resetGoogleToolCallCounter,
+} from './google.js';
+
+export { OllamaProvider } from './ollama.js';
+export {
+  toOllamaTools,
+  toOllamaMessages,
+  parseOllamaToolCall,
+  buildStructuredOutputPrompt,
+  parseStructuredOutput,
+  resetToolCallCounter as resetOllamaToolCallCounter,
+} from './ollama.js';
+
+export { OpenRouterProvider } from './openrouter.js';
+
 export type { ProviderConfig, ProviderType } from './provider.js';
 export { withStreamingTimeouts } from './provider.js';
-export { toAnthropicTools, toAnthropicMessages, parseToolUseBlock } from './anthropic.js';

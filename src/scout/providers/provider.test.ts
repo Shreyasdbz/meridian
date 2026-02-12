@@ -143,33 +143,45 @@ describe('createProvider', () => {
     expect(provider.id).toBe('anthropic:claude-sonnet-4-5-20250929');
   });
 
-  it('should throw LLMProviderError for unsupported provider type "openai"', () => {
+  it('should create an OpenAIProvider for type "openai"', () => {
     const config: ProviderConfig = {
       type: 'openai',
       apiKey: 'test-key',
       model: 'gpt-4o',
     };
 
-    expect(() => createProvider(config)).toThrow(LLMProviderError);
-    expect(() => createProvider(config)).toThrow(/not yet supported/);
+    const provider = createProvider(config);
+    expect(provider.name).toBe('openai');
+    expect(provider.id).toBe('openai:gpt-4o');
   });
 
-  it('should throw LLMProviderError for unsupported provider type "google"', () => {
-    expect(() =>
-      createProvider({ type: 'google', model: 'gemini-pro' }),
-    ).toThrow(/not yet supported/);
+  it('should create a GoogleProvider for type "google"', () => {
+    const provider = createProvider({
+      type: 'google',
+      apiKey: 'test-key',
+      model: 'gemini-2.0-flash',
+    });
+    expect(provider.name).toBe('google');
+    expect(provider.id).toBe('google:gemini-2.0-flash');
   });
 
-  it('should throw LLMProviderError for unsupported provider type "ollama"', () => {
-    expect(() =>
-      createProvider({ type: 'ollama', model: 'llama3' }),
-    ).toThrow(/not yet supported/);
+  it('should create an OllamaProvider for type "ollama"', () => {
+    const provider = createProvider({
+      type: 'ollama',
+      model: 'llama3',
+    });
+    expect(provider.name).toBe('ollama');
+    expect(provider.id).toBe('ollama:llama3');
   });
 
-  it('should throw LLMProviderError for unsupported provider type "openrouter"', () => {
-    expect(() =>
-      createProvider({ type: 'openrouter', model: 'test' }),
-    ).toThrow(/not yet supported/);
+  it('should create an OpenRouterProvider for type "openrouter"', () => {
+    const provider = createProvider({
+      type: 'openrouter',
+      apiKey: 'test-key',
+      model: 'anthropic/claude-sonnet-4-5-20250929',
+    });
+    expect(provider.name).toBe('openrouter');
+    expect(provider.id).toBe('openrouter:anthropic/claude-sonnet-4-5-20250929');
   });
 
   it('should throw LLMProviderError for unknown provider type', () => {

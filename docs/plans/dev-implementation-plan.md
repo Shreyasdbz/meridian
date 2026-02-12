@@ -779,7 +779,7 @@
 
 ### Phase 3.2: Additional LLM Providers
 
-> **Note**: Per architecture roadmap Section 16, multi-provider support is **deferred from v0.1**. v0.1 uses single provider (Anthropic) only. This phase is implemented in v0.2 (Phase 9). It is listed here for context but should be executed as part of Phase 9.
+> **Note**: Per architecture roadmap Section 16, multi-provider support is **deferred from v0.1**. v0.1 uses single provider (Anthropic) only. Originally planned for Phase 9 (v0.2), but **implemented early** alongside Phase 3.1 to establish the full provider abstraction layer upfront. The provider adapters are available immediately; v0.1 still defaults to Anthropic only. No architecture deviation — the providers follow the same `LLMProvider` interface from Section 5.2.4.
 
 **PR Scope**: OpenAI, Google, Ollama, and OpenRouter provider adapters (v0.2).
 
@@ -2044,7 +2044,7 @@
 
 **Deliverables**:
 
-- Implement Phase 3.2 deliverables (OpenAI, Google, Ollama, OpenRouter provider adapters)
+- ~~Implement Phase 3.2 deliverables (OpenAI, Google, Ollama, OpenRouter provider adapters)~~ — **Already implemented** in Phase 3.2 (pulled forward)
 - Sentinel configuration guidance in Bridge: surface recommendations during provider setup (different providers = high security, same provider different model = balanced, same model = budget per Section 5.3.6)
 - Database-level encryption option:
   - `@journeyapps/sqlcipher` as configurable drop-in replacement for `better-sqlite3` (Section 8.1.1)
