@@ -54,3 +54,22 @@ export type {
   FailureClassification,
   PlanningFailureState,
 } from './failure-handler.js';
+
+// External content provenance (Phase 3.4)
+export {
+  wrapWithProvenance,
+  wrapGearOutput,
+  wrapEmailContent,
+  wrapWebContent,
+  wrapDocumentContent,
+  escapeAttributeValue,
+  sanitizeContent,
+  isInstructionSource,
+  hasTagEscapeAttempt,
+} from './provenance.js';
+export type {
+  ContentSource,
+  TrustLevel,
+  ProvenanceAttributes,
+  ProvenanceWrappedContent,
+} from './provenance.js';
