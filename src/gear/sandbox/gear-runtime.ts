@@ -83,6 +83,7 @@ interface GearContextProxy {
   getSecret(name: string): Promise<string | undefined>;
   readFile(path: string): Promise<Buffer>;
   writeFile(path: string, content: Buffer): Promise<void>;
+  deleteFile(path: string): Promise<void>;
   listFiles(dir: string): Promise<string[]>;
   fetch(url: string, options?: FetchOptions): Promise<FetchResponse>;
   log(message: string): void;
@@ -381,6 +382,21 @@ function createContextProxy(
       const parentDir = resolve(validation.resolved, '..');
       await mkdir(parentDir, { recursive: true });
       await fsWriteFile(validation.resolved, content);
+    },
+
+    async deleteFile(path: string): Promise<void> {
+      const validation = validatePath(
+        path,
+        permissions.filesystem?.write,
+        workspacePath,
+      );
+      if (!validation.ok) {
+        throw new Error(
+          `deleteFile denied for Gear '${gearId}': ${validation.error}`,
+        );
+      }
+      const { unlink: fsUnlink } = await import('node:fs/promises');
+      await fsUnlink(validation.resolved);
     },
 
     listFiles(dir: string): Promise<string[]> {

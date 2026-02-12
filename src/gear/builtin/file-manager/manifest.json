@@ -1,0 +1,232 @@
+{
+  "id": "file-manager",
+  "name": "File Manager",
+  "version": "1.0.0",
+  "description": "Built-in Gear for file operations within the workspace. Supports reading, writing, listing, searching, and deleting files.",
+  "author": "Meridian",
+  "license": "Apache-2.0",
+  "origin": "builtin",
+  "checksum": "builtin",
+  "actions": [
+    {
+      "name": "read_file",
+      "description": "Read file contents at a given path within the workspace",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Relative path to the file within the workspace"
+          },
+          "encoding": {
+            "type": "string",
+            "description": "File encoding (default: utf-8). Use 'base64' for binary files.",
+            "enum": ["utf-8", "base64"]
+          }
+        },
+        "required": ["path"],
+        "additionalProperties": false
+      },
+      "returns": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "string",
+            "description": "File contents (as text or base64-encoded)"
+          },
+          "size": {
+            "type": "number",
+            "description": "File size in bytes"
+          },
+          "encoding": {
+            "type": "string",
+            "description": "Encoding used for the content"
+          }
+        },
+        "required": ["content", "size", "encoding"]
+      },
+      "riskLevel": "low"
+    },
+    {
+      "name": "write_file",
+      "description": "Write content to a file at a given path within the workspace. Creates parent directories if needed.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Relative path to the file within the workspace"
+          },
+          "content": {
+            "type": "string",
+            "description": "Content to write to the file"
+          },
+          "encoding": {
+            "type": "string",
+            "description": "Content encoding (default: utf-8). Use 'base64' for binary content.",
+            "enum": ["utf-8", "base64"]
+          }
+        },
+        "required": ["path", "content"],
+        "additionalProperties": false
+      },
+      "returns": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "The path the file was written to"
+          },
+          "size": {
+            "type": "number",
+            "description": "Size of the written file in bytes"
+          }
+        },
+        "required": ["path", "size"]
+      },
+      "riskLevel": "medium"
+    },
+    {
+      "name": "list_files",
+      "description": "Recursive directory listing with optional glob filter",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Relative path to the directory within the workspace (default: root)"
+          },
+          "glob": {
+            "type": "string",
+            "description": "Optional glob pattern to filter results (e.g., '*.txt', '**/*.json')"
+          },
+          "recursive": {
+            "type": "boolean",
+            "description": "Whether to list files recursively (default: true)"
+          }
+        },
+        "additionalProperties": false
+      },
+      "returns": {
+        "type": "object",
+        "properties": {
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": { "type": "string" },
+                "isDirectory": { "type": "boolean" },
+                "size": { "type": "number" }
+              },
+              "required": ["path", "isDirectory"]
+            },
+            "description": "List of files and directories"
+          },
+          "count": {
+            "type": "number",
+            "description": "Total number of entries returned"
+          }
+        },
+        "required": ["files", "count"]
+      },
+      "riskLevel": "low"
+    },
+    {
+      "name": "search_files",
+      "description": "Search for text patterns within files (grep-like functionality)",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "pattern": {
+            "type": "string",
+            "description": "Text or regex pattern to search for"
+          },
+          "path": {
+            "type": "string",
+            "description": "Relative path to search within (default: workspace root)"
+          },
+          "glob": {
+            "type": "string",
+            "description": "Optional glob pattern to filter which files to search (e.g., '*.ts')"
+          },
+          "maxResults": {
+            "type": "number",
+            "description": "Maximum number of matches to return (default: 100)"
+          }
+        },
+        "required": ["pattern"],
+        "additionalProperties": false
+      },
+      "returns": {
+        "type": "object",
+        "properties": {
+          "matches": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "file": { "type": "string" },
+                "line": { "type": "number" },
+                "content": { "type": "string" }
+              },
+              "required": ["file", "line", "content"]
+            },
+            "description": "List of matching lines"
+          },
+          "totalMatches": {
+            "type": "number",
+            "description": "Total number of matches found (may exceed returned results)"
+          },
+          "truncated": {
+            "type": "boolean",
+            "description": "Whether results were truncated due to maxResults"
+          }
+        },
+        "required": ["matches", "totalMatches", "truncated"]
+      },
+      "riskLevel": "low"
+    },
+    {
+      "name": "delete_file",
+      "description": "Delete a file within the workspace. High risk — always requires approval.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Relative path to the file to delete within the workspace"
+          }
+        },
+        "required": ["path"],
+        "additionalProperties": false
+      },
+      "returns": {
+        "type": "object",
+        "properties": {
+          "deleted": {
+            "type": "boolean",
+            "description": "Whether the file was successfully deleted"
+          },
+          "path": {
+            "type": "string",
+            "description": "The path of the deleted file"
+          }
+        },
+        "required": ["deleted", "path"]
+      },
+      "riskLevel": "high"
+    }
+  ],
+  "permissions": {
+    "filesystem": {
+      "read": ["**"],
+      "write": ["**"]
+    }
+  },
+  "resources": {
+    "maxMemoryMb": 128,
+    "maxCpuPercent": 25,
+    "timeoutMs": 60000
+  }
+}

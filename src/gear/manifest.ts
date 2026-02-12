@@ -99,6 +99,8 @@ const VULNERABILITY_PATTERNS: Array<{
     id: 'VULN_WILDCARD_FILESYSTEM',
     description: 'Gear requests wildcard filesystem access — overly broad permissions',
     check: (m) => {
+      // Builtin Gear may legitimately need workspace-wide access (e.g., file-manager)
+      if (m.origin === 'builtin') return false;
       const readPaths = m.permissions.filesystem?.read ?? [];
       const writePaths = m.permissions.filesystem?.write ?? [];
       return [...readPaths, ...writePaths].some(

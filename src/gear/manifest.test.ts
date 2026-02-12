@@ -572,8 +572,9 @@ describe('validateManifest', () => {
       }
     });
 
-    it('should flag wildcard filesystem access', () => {
+    it('should flag wildcard filesystem access for non-builtin Gear', () => {
       const manifest = createValidManifest({
+        origin: 'user',
         permissions: {
           filesystem: {
             read: ['**'],
@@ -588,6 +589,21 @@ describe('validateManifest', () => {
           result.error.some((i) => i.field === 'VULN_WILDCARD_FILESYSTEM'),
         ).toBe(true);
       }
+    });
+
+    it('should allow wildcard filesystem access for builtin Gear', () => {
+      const manifest = createValidManifest({
+        origin: 'builtin',
+        permissions: {
+          filesystem: {
+            read: ['**'],
+            write: ['**'],
+          },
+        },
+      });
+
+      const result = validateManifest(manifest);
+      expect(result.ok).toBe(true);
     });
 
     it('should flag wildcard network access', () => {

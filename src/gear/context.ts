@@ -3,7 +3,7 @@
 // Enforces filesystem, network, and secret ACL boundaries per manifest.
 
 import { lookup as dnsLookup } from 'node:dns/promises';
-import { readFile, writeFile, mkdir, readdir } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, readdir, unlink } from 'node:fs/promises';
 import { resolve, relative, sep } from 'node:path';
 
 import type {
@@ -367,6 +367,25 @@ export class GearContextImpl implements GearContext {
     await mkdir(parentDir, { recursive: true });
 
     await writeFile(validation.value, content);
+  }
+
+  /**
+   * Delete a file within the declared filesystem write paths.
+   * Added in Phase 5.4 to support the file-manager Gear's delete_file action.
+   */
+  async deleteFile(path: string): Promise<void> {
+    const validation = validatePath(
+      path,
+      this.manifest.permissions.filesystem?.write,
+      this.workspacePath,
+    );
+    if (!validation.ok) {
+      throw new GearSandboxError(
+        `deleteFile denied for Gear '${this.manifest.id}': ${validation.error}`,
+      );
+    }
+
+    await unlink(validation.value);
   }
 
   /**

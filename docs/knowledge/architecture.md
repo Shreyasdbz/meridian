@@ -2457,9 +2457,10 @@ interface GearContext {
   // Read allowed secrets (only those declared in manifest)
   getSecret(name: string): Promise<string | undefined>;
 
-  // Read files (only within declared paths)
+  // Filesystem (only within declared paths)
   readFile(path: string): Promise<Buffer>;
   writeFile(path: string, content: Buffer): Promise<void>;
+  deleteFile(path: string): Promise<void>;  // Added v0.1: requires write permission
   listFiles(dir: string): Promise<string[]>;
 
   // Network (only to declared domains)

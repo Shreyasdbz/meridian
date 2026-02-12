@@ -1266,6 +1266,17 @@
   - Path traversal attempts blocked
   - Delete requires high risk classification
 
+**Implementation Notes** (added during development):
+
+- **GearContext.deleteFile() added**: Architecture Section 9.3 GearContext interface did not include a `deleteFile()` method, but the `delete_file` action requires file deletion within the sandbox. Added `deleteFile(path: string): Promise<void>` to the GearContext interface (`shared/types.ts`), GearContextImpl (`context.ts`), and the sandbox runtime proxy (`gear-runtime.ts`). Validates against manifest `permissions.filesystem.write` patterns (deletion requires write permission). This is the minimal API extension needed to implement `delete_file` without violating the architecture's constraint that "GearContext is the *only* API available to Gear code."
+- **VULN_WILDCARD_FILESYSTEM exemption for builtin Gear**: The file-manager Gear requires workspace-wide read/write access (`["**"]` patterns). The vulnerability scanner's `VULN_WILDCARD_FILESYSTEM` check now exempts `origin: 'builtin'` Gear, consistent with the existing `VULN_SHELL_DEFAULT_ENABLED` exemption pattern. User and journal Gear are still flagged.
+- **Manifest checksum**: `manifest.json` includes `"checksum": "builtin"` as a placeholder. The actual SHA-256 checksum is computed at registration time by `GearRegistry.installBuiltin()`.
+- **Gear exports `execute(context, action)` signature**: Called by `gear-runtime.ts` which dynamically imports the module via `MERIDIAN_GEAR_ENTRY_POINT` env var.
+- **Parameter validation**: Uses typed extraction helpers (`requireString`, `optionalString`, `optionalStringOrUndefined`, `optionalNumber`, `optionalBoolean`) that validate `unknown` values from `context.params` without unsafe casts. Parameters are also validated against JSON Schema at the manifest level before reaching the Gear.
+- **search_files implementation**: Uses regex-based search with fallback to literal matching for invalid patterns. Binary file detection via null-byte heuristic in first 8KB. Line content truncated at 500 characters. Continues counting `totalMatches` across all files even after `maxResults` is reached, so the count is accurate rather than approximate.
+- **list_files glob matching**: Custom `matchGlob()` function supporting `*`, `**`, and `?` patterns. Does not support character classes `[abc]` or brace expansion `{a,b}` — acceptable for v0.1. When glob filtering is active, only matching files are returned (directories are excluded from results but still recursed into).
+- Test coverage: 41 tests across 8 describe blocks (manifest, read_file, write_file, list_files, search_files, delete_file, path traversal prevention, unknown action)
+
 ---
 
 ### Phase 5.5: Built-in Gear — web-fetch

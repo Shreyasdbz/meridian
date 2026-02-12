@@ -306,6 +306,7 @@ export interface GearContext {
   getSecret(name: string): Promise<string | undefined>;
   readFile(path: string): Promise<Buffer>;
   writeFile(path: string, content: Buffer): Promise<void>;
+  deleteFile(path: string): Promise<void>;
   listFiles(dir: string): Promise<string[]>;
   fetch(url: string, options?: FetchOptions): Promise<FetchResponse>;
   log(message: string): void;
