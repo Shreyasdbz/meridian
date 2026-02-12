@@ -258,3 +258,7 @@ export { loadConfig, getDefaultConfig, detectDeploymentTier } from './config.js'
 // Logging
 export type { LogLevel, LogEntry, LogOutput, LoggerOptions } from './logger.js';
 export { Logger, createLogger, redact } from './logger.js';
+
+// Secrets vault
+export type { SecretMetadata, SecretRotationWarning } from './secrets.js';
+export { SecretsVault } from './secrets.js';

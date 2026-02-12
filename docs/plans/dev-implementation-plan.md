@@ -384,7 +384,7 @@
     - `initialize(password: string, tier: 'standard' | 'low-power'): Promise<void>`
     - `unlock(password: string): Promise<void>`
     - `lock(): void` (zeros key from memory)
-    - `store(name: string, value: Buffer, allowedGear: string[]): Promise<void>`
+    - `store(name: string, value: Buffer, allowedGear: string[], options?: { rotateAfterDays?: number }): Promise<void>`
     - `retrieve(name: string, requestingGear: string): Promise<Buffer | undefined>` (ACL check)
     - `delete(name: string): Promise<void>`
     - `list(): Promise<SecretMetadata[]>` (names and metadata only, never values)
