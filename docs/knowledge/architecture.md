@@ -2241,7 +2241,7 @@ CREATE INDEX idx_jobs_parent_id ON jobs(parent_id);
 CREATE INDEX idx_jobs_created_at ON jobs(created_at);
 CREATE INDEX idx_jobs_completed_at ON jobs(completed_at);
 CREATE INDEX idx_jobs_conversation ON jobs(conversation_id);
-CREATE INDEX idx_jobs_dedup ON jobs(dedup_hash) WHERE status NOT IN ('completed', 'failed', 'cancelled');
+CREATE UNIQUE INDEX idx_jobs_dedup ON jobs(dedup_hash) WHERE status NOT IN ('completed', 'failed', 'cancelled');
 CREATE INDEX idx_messages_job_id ON messages(job_id);
 CREATE INDEX idx_messages_conversation ON messages(conversation_id);
 CREATE INDEX idx_messages_created_at ON messages(created_at);

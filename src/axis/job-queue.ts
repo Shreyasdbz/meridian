@@ -178,29 +178,45 @@ export class JobQueue {
 
     const metadataJson = options.metadata ? JSON.stringify(options.metadata) : null;
 
-    const result = await this.db.run(
-      'meridian',
-      `INSERT INTO jobs (
-        id, conversation_id, parent_id, status, priority,
-        source_type, source_message_id, dedup_hash,
-        max_attempts, timeout_ms, metadata_json,
-        created_at, updated_at
-      ) VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        id,
-        options.conversationId ?? null,
-        options.parentId ?? null,
-        options.priority ?? 'normal',
-        options.source,
-        options.sourceMessageId ?? null,
-        options.dedupHash ?? null,
-        options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS,
-        options.timeoutMs ?? DEFAULT_JOB_TIMEOUT_MS,
-        metadataJson,
-        now,
-        now,
-      ],
-    );
+    let result;
+    try {
+      result = await this.db.run(
+        'meridian',
+        `INSERT INTO jobs (
+          id, conversation_id, parent_id, status, priority,
+          source_type, source_message_id, dedup_hash,
+          max_attempts, timeout_ms, metadata_json,
+          created_at, updated_at
+        ) VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          id,
+          options.conversationId ?? null,
+          options.parentId ?? null,
+          options.priority ?? 'normal',
+          options.source,
+          options.sourceMessageId ?? null,
+          options.dedupHash ?? null,
+          options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS,
+          options.timeoutMs ?? DEFAULT_JOB_TIMEOUT_MS,
+          metadataJson,
+          now,
+          now,
+        ],
+      );
+    } catch (error: unknown) {
+      // UNIQUE constraint on dedup_hash — a non-terminal job with this hash
+      // already exists (race condition between check and insert)
+      if (
+        options.dedupHash &&
+        error instanceof Error &&
+        error.message.includes('UNIQUE constraint failed')
+      ) {
+        throw new ConflictError(
+          `Duplicate request: a job with dedup hash '${options.dedupHash.slice(0, 8)}...' already exists`,
+        );
+      }
+      throw error;
+    }
 
     if (result.changes !== 1) {
       throw new ConflictError(`Failed to create job: no rows inserted`);

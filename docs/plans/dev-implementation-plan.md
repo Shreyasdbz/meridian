@@ -532,6 +532,14 @@
 - `src/axis/dedup.test.ts` — Hash generation, duplicate detection, time window boundaries
 - `src/axis/idempotency.test.ts` — Cached result reuse, crash recovery, new execution path
 
+**Implementation Notes**:
+
+- Migration 003 upgrades `idx_jobs_dedup` from a regular index to a UNIQUE partial index. The original `001_initial.sql` had a non-unique index, which was inconsistent with the requirement in Section 5.1.9 for atomic dedup prevention. The migration drops and re-creates the index as UNIQUE.
+- Architecture Section 5.1.9 specifies `CREATE UNIQUE INDEX idx_dedup ON jobs(dedupHash)` (camelCase column), but the actual schema uses `dedup_hash` (snake_case). Implementation follows the schema column name: `idx_jobs_dedup ON jobs(dedup_hash)`.
+- Architecture Section 5.1.7 specifies that stale `started` entries should be "marked `failed`, then re-execute with a new log entry." Implementation instead **resets the existing entry** to `started` with a fresh timestamp, keeping the same `executionId`. This deliberate deviation ensures that after crash recovery + successful retry, subsequent idempotency checks find the `completed` result on the original deterministic key. Creating a separate entry with a new ID would break the cache lookup, since `computeExecutionId(jobId, stepId)` always returns the same ID.
+- `computeExecutionId` uses SHA-256 of `jobId:stepId` (colon-separated) rather than simple concatenation, to avoid ambiguity if IDs contain overlapping characters.
+- Additional helper functions exported beyond the plan: `getExecutionLog(db, jobId)` and `getExecutionEntry(db, executionId)` for querying execution state (used by tests and useful for future observability).
+
 ---
 
 ### Phase 2.4: Worker Pool, Concurrency & Timeout Hierarchy
