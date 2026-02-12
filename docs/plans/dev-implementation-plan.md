@@ -1112,6 +1112,14 @@
   - Built-in auto-registration
   - Enable/disable toggle
 
+**Implementation Deviations**:
+
+- **`install()` return type**: Plan specifies `Promise<void>` but implementation uses `Promise<Result<void, ManifestIssue[]>>`. This follows the project code style rule: "Use `Result<T, E>` for expected failures (validation, parsing) instead of exceptions." Manifest validation failure is an expected failure, so `Result` is the correct pattern. `ConflictError` (duplicate ID) is still thrown as an unexpected failure.
+- **Additional registry methods**: `getConfig()`, `isEnabled()`, `getChecksum()`, `loadCache()`, `cacheSize`, and `getManifest()` (GearLookup interface) were added beyond the plan spec to support plan-validator integration (Phase 4 already uses `GearLookup`) and startup cache management. No architecture deviation — these are implementation necessities.
+- **`builtin/index.ts` is a stub**: The auto-registration mechanism (`registerBuiltins()`, `installBuiltin()`) is complete and tested. Actual built-in Gear definitions (file-manager, web-fetch, shell) are delivered in Phases 5.4–5.6. Phase 5.1 tests use synthetic manifests.
+- **`GearAction.parameters/returns` typed as `Record<string, unknown>`**: Architecture doc uses conceptual `JSONSchema` type. `Record<string, unknown>` is the practical TypeScript representation — structurally equivalent and validated at runtime via AJV.
+- **`maxNetworkBytesPerCall` has no default**: Architecture marks this as optional with no specified default. Implementation validates when present but doesn't apply a default — intentionally unbounded unless explicitly set in manifest.
+
 ---
 
 ### Phase 5.2: Process Sandbox (Level 1)
