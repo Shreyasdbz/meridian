@@ -498,6 +498,14 @@
   - Terminal states are truly terminal
   - Uses deterministic mock clocks for time-dependent scheduling tests (Section 13.1)
 
+> **Implementation Notes (Phase 2.2)**:
+>
+> - **Migration 002 added**: The initial migration (001) was missing `worker_id`, `revision_count`, `replan_count`, and `metadata_json` columns on the `jobs` table. These were added in `src/axis/migrations/002_job_queue_columns.sql`.
+> - **`workerId` added to Job interface**: The `Job` type in `shared/types.ts` now includes `workerId?: string` as a typed optional field, required for CAS-based job claiming.
+> - **`stepAttempts` deferred to Phase 2.4**: Per-step retry tracking (`stepAttempts`, max 3) is a per-execution-step concern tracked in the `execution_log` table. It is implemented where steps are actually dispatched (Phase 2.4 Worker Pool / Phase 2.5), not in the job-level state machine.
+> - **Queue polling deferred to Phase 2.4**: The `JobQueue` class provides `claimJob()` as the polling primitive. The actual polling loop (using `QUEUE_POLL_INTERVAL_MS = 100`) is implemented in Phase 2.4 (Worker Pool), which orchestrates polling and concurrent job processing.
+> - **Additional deliverables**: `cancelJob()` convenience method, `getQueueDepth()`, and `getActiveJobCount()` were added as useful primitives for the worker pool and Bridge status reporting.
+
 ---
 
 ### Phase 2.3: Request Deduplication & Idempotency

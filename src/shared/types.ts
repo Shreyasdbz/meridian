@@ -83,6 +83,7 @@ export interface Job {
   parentId?: string;
   priority?: JobPriority;
   source?: JobSource;
+  workerId?: string;
   plan?: ExecutionPlan;
   validation?: ValidationResult;
   result?: Record<string, unknown>;

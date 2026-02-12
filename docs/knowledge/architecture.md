@@ -549,6 +549,7 @@ interface Job {
   parentId?: string;             // Parent job ID for sub-jobs
   priority?: 'low' | 'normal' | 'high' | 'critical';
   source?: string;               // 'user' | 'schedule' | 'webhook' | 'sub-job'
+  workerId?: string;             // ID of the worker processing this job (set on claim)
   plan?: ExecutionPlan;          // Scout's execution plan
   validation?: ValidationResult; // Sentinel's validation result
   result?: Record<string, unknown>; // Execution result
