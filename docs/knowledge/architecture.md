@@ -2634,6 +2634,7 @@ require_approval_for = ["file.delete", "shell.execute", "network.post", "message
 - **Database worker thread**: Owns all database connections. Receives queries via `MessagePort`, executes them synchronously (which is fine — it has no other work), and returns results. Communication overhead is ~0.05-0.1ms per message.
 - **Two connections per database**: One write connection and one readonly connection. The read connection enables concurrent reads during long write transactions.
 - **Async client API**: `@meridian/shared` exports an async database client that wraps the worker thread communication. All packages use this client — no package opens its own database connections.
+- **DatabaseEngine extraction**: The synchronous database operations are encapsulated in a `DatabaseEngine` class (`database/engine.ts`), which is used by both the worker thread and a direct in-process mode. The direct mode (`DatabaseClient({ direct: true })`) is used for testing to avoid worker thread setup overhead and build-dependency on compiled JS.
 
 ### 11.2 LLM API Optimization
 
@@ -3153,3 +3154,4 @@ Multi-user support, messaging platform integrations (Telegram, Discord, Slack), 
 | 1.0 | 2026-02-07 | Initial architecture document |
 | 1.1 | 2026-02-07 | Revision pass: replaced deprecated `vm2` with `isolated-vm`, fixed component diagram (Scout↔Sentinel no longer shown as direct), added fast-path vs full-path execution model, added graceful degradation table, added Sentinel cost implications section, added MCP compatibility section, fixed update-check to not conflict with no-telemetry principle, clarified audit log append-only guarantee scope |
 | 2.0 | 2026-02-10 | Major revision incorporating 116 recommendations from 14 domain-expert reviews. Added delivery roadmap, typed-with-metadata interfaces, single-package structure, honest framing (privacy, costs, PII limitations), expanded security (threat model, Web security headers, WebSocket auth), performance infrastructure (SQLite worker thread, memory budget, cold start), dual-mode UI (Chat + Mission Control), trust profiles, onboarding wizard, Gear Suggester (scoped down from Synthesizer), and comprehensive phase annotations (v0.1–v0.4). |
+| 2.0.1 | 2026-02-11 | Section 11.1: Added DatabaseEngine extraction note — synchronous operations encapsulated in reusable class enabling both worker thread and direct in-process modes. |

@@ -311,6 +311,15 @@
 - Migrations run idempotently (running twice is safe)
 - Worker thread communication overhead under 1ms per message
 
+**Implementation Notes** (added during Phase 1.4 implementation):
+
+- Added `database/engine.ts` — `DatabaseEngine` class extracting synchronous database operations from the worker thread. This enables a `direct` mode on `DatabaseClient` where the engine runs in-process (for testing) without needing a compiled worker.js or tsx loader. Production always uses the worker thread per Section 11.1.
+- Added `database/types.ts` — Worker message protocol types (`WorkerRequest`, `WorkerResponse`) and shared database types (`DatabaseName`, `DeploymentTier`, `RunResult`), kept separate from core `types.ts` for database-specific concerns.
+- `DatabaseClient` supports both `direct: true` (in-process engine, used by tests) and the default worker thread mode. All 111 database tests use direct mode for reliability; worker mode is integration-tested when built JS is available.
+- Audit migration files placed at `src/shared/database/migrations/audit/` since audit is a shared concern, not owned by a single module.
+- `configureConnection()` accepts a `DeploymentTier` parameter for tier-specific PRAGMA tuning (cache_size, mmap_size) — this is a refinement of the plan's `configureConnection(db)` signature to also accept tier context.
+- `schema_version` tables are NOT embedded in individual migration SQL files. Instead, the migrator's `ensureVersionTable()` creates them automatically (with `CREATE TABLE IF NOT EXISTS`) before running any migrations. This avoids a chicken-and-egg problem and is cleaner than duplicating the DDL in every migration directory.
+
 ---
 
 ### Phase 1.5: Configuration & Logging

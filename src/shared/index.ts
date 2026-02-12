@@ -231,3 +231,11 @@ export {
   BACKUP_WEEKLY_COUNT,
   BACKUP_MONTHLY_COUNT,
 } from './constants.js';
+
+// Database infrastructure
+export type { DatabaseName, DeploymentTier, RunResult } from './database/index.js';
+export { DatabaseClient } from './database/index.js';
+export type { DatabaseClientOptions } from './database/index.js';
+export { configureConnection } from './database/index.js';
+export { discoverMigrations, getCurrentVersion, migrate, migrateAll } from './database/index.js';
+export type { MigrationFile, MigrationResult } from './database/index.js';
