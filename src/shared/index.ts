@@ -239,3 +239,22 @@ export type { DatabaseClientOptions } from './database/index.js';
 export { configureConnection } from './database/index.js';
 export { discoverMigrations, getCurrentVersion, migrate, migrateAll } from './database/index.js';
 export type { MigrationFile, MigrationResult } from './database/index.js';
+
+// Configuration
+export type {
+  AxisConfig,
+  ScoutModelsConfig,
+  ScoutConfig,
+  SentinelConfig,
+  JournalConfig,
+  BridgeConfig,
+  SecurityConfig,
+  MeridianConfig,
+  DeepPartial,
+  LoadConfigOptions,
+} from './config.js';
+export { loadConfig, getDefaultConfig, detectDeploymentTier } from './config.js';
+
+// Logging
+export type { LogLevel, LogEntry, LogOutput, LoggerOptions } from './logger.js';
+export { Logger, createLogger, redact } from './logger.js';
