@@ -1,5 +1,9 @@
 // @meridian/axis — public API
 
+// Axis runtime (Phase 2.8)
+export { Axis, createAxis } from './axis.js';
+export type { AxisLogger, AxisOptions, AxisInternals } from './axis.js';
+
 // Component registry
 export { ComponentRegistry } from './registry.js';
 export type { MessageHandler } from './registry.js';
