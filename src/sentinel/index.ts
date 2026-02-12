@@ -1,5 +1,13 @@
 // @meridian/sentinel — public API
 
+// Sentinel component (Phase 4.3)
+export { Sentinel, createSentinel } from './sentinel.js';
+export type {
+  SentinelConfig,
+  SentinelDependencies,
+  SentinelLogger,
+} from './sentinel.js';
+
 // Risk assessor (Phase 4.1)
 export type { ActionType, RiskDivergence } from './risk-assessor.js';
 export {

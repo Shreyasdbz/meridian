@@ -1061,6 +1061,12 @@
   - Verify Sentinel cannot see original user messages
   - Verify plan with embedded user context is rejected if smuggled through metadata
 
+**Implementation Notes (Phase 4.3)**:
+
+- **Factory function signature deviation**: `createSentinel(config: SentinelConfig, deps: SentinelDependencies): Sentinel` instead of `createSentinel(config): Sentinel`. The `deps` parameter separates the Axis component registry (a runtime dependency) from Sentinel's own configuration (policy settings, logger). This is consistent with the Scout pattern (Phase 3.5) where `createScout(config, deps)` was adopted for the same reason — clean separation of configuration vs dependencies for testability and dependency injection.
+- **Additional barrier keys**: Beyond the plan's three barrier categories (user messages, Journal data, Gear catalog), the implementation also checks for `conversationHistory`, `journalMemories`, `relevantMemories`, `gearManifests`, and `originalMessage` — all plausible variants that could be used to bypass the information barrier.
+- **Barrier violation handling**: Violations are logged as warnings but do not block processing (defense-in-depth). The primary barrier is at the Axis dispatch level; the Sentinel-side check is a secondary safeguard.
+
 ---
 
 ## Phase 5: Gear — Plugin System
