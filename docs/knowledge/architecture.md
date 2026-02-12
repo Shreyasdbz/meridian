@@ -2463,7 +2463,7 @@ interface GearContext {
   listFiles(dir: string): Promise<string[]>;
 
   // Network (only to declared domains)
-  fetch(url: string, options?: FetchOptions): Promise<Response>;
+  fetch(url: string, options?: FetchOptions): Promise<FetchResponse>;
 
   // Communicate back to the user
   log(message: string): void;    // Append to execution log

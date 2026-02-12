@@ -325,6 +325,10 @@ export function buildSandboxEnv(
     env['MERIDIAN_SECRETS_DIR'] = secretsDir;
   }
 
+  // Pass manifest permissions so the runtime can enforce them
+  // This is the runtime's source of truth for filesystem/network/secret ACLs.
+  env['MERIDIAN_GEAR_PERMISSIONS'] = JSON.stringify(manifest.permissions);
+
   // Only pass explicitly declared environment variables from permissions
   if (manifest.permissions.environment) {
     for (const varName of manifest.permissions.environment) {

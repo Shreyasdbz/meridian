@@ -46,3 +46,24 @@ export type {
   ProgressCallback,
   GearHostConfig,
 } from './sandbox/gear-host.js';
+
+// Gear context: constrained API for Gear code inside the sandbox (Phase 5.3)
+export {
+  GearContextImpl,
+  createGearContext,
+  validatePath,
+  validateUrl,
+  isPrivateIp,
+  checkDnsRebinding,
+} from './context.js';
+export type {
+  SecretProvider,
+  SubJobCreator,
+  LogSink,
+  ProgressSink,
+  GearContextConfig,
+  DnsResolver,
+} from './context.js';
+
+// Gear runtime: runs inside the sandbox process (Phase 5.3)
+export { startRuntime } from './sandbox/gear-runtime.js';

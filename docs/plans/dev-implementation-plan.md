@@ -1219,6 +1219,17 @@
   - Secret ACL enforcement
   - Sub-job creation routes through Axis
 
+**Implementation Notes** (added during development):
+
+- Architecture Section 9.3 `GearContext.fetch()` return type clarified from `Response` to `FetchResponse` (defined in `shared/types.ts` with `status`, `headers`, `body` fields)
+- Two implementations of GearContext exist by design: `GearContextImpl` (host-side, in `context.ts`) provides the canonical validation logic; `gear-runtime.ts` duplicates this logic for sandbox isolation since it cannot import from `@meridian/*`
+- Manifest permissions are passed to the sandbox runtime via `MERIDIAN_GEAR_PERMISSIONS` env variable (JSON-encoded), set by `buildSandboxEnv()` in `process-sandbox.ts`
+- v0.1 limitation: HMAC signing in the sandbox runtime is deferred — responses are sent with `hmac: 'unsigned'`; the host-side GearHost handles verification. Ed25519 per-component signing in v0.2 will enable bidirectional verification
+- v0.1 limitation: `createSubJob` in the sandbox runtime is fire-and-forget — sends a `subjob` message to the host via stdout and returns immediately with `status: 'pending'`. Full request-response sub-job support requires bidirectional IPC messaging (v0.2)
+- Private IP filtering covers ranges beyond the spec minimum: 0.0.0.0/8, 169.254.0.0/16 (link-local), IPv6 loopback (::1), IPv6 link-local (fe80::/10), and IPv4-mapped IPv6 addresses (::ffff:x.x.x.x)
+- `DnsResolver` type is injectable for deterministic testing of DNS rebinding prevention
+- Test coverage: 77 tests across 11 describe blocks (exceeds the 7 categories specified above)
+
 ---
 
 ### Phase 5.4: Built-in Gear — file-manager
