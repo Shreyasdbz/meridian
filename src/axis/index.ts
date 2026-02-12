@@ -30,3 +30,38 @@ export {
   getExecutionEntry,
 } from './idempotency.js';
 export type { IdempotencyCheck, ExecutionLogEntry } from './idempotency.js';
+
+// Error classification & retry (Section 5.1.11)
+export {
+  classifyError,
+  extractStatusCode,
+  isTimeoutError,
+  computeBackoffDelay,
+  shouldRetry,
+} from './error-classifier.js';
+export type { ErrorCategory, ClassifiedError } from './error-classifier.js';
+
+// Timeout hierarchy (Section 5.1.10)
+export {
+  TimeoutBudget,
+  createCompositeSignal,
+  runWithTimeout,
+  cancelWithGrace,
+  createJobBudget,
+  getExecutionBudget,
+} from './timeout.js';
+export type {
+  TimedOperationOptions,
+  CancellationProtocolOptions,
+  JobTimeoutConfig,
+} from './timeout.js';
+
+// Worker pool (Section 5.1.4)
+export { WorkerPool } from './worker-pool.js';
+export type {
+  WorkerStatus,
+  WorkerInfo,
+  JobProcessor,
+  WorkerPoolLogger,
+  WorkerPoolOptions,
+} from './worker-pool.js';
