@@ -5,3 +5,6 @@ export { execute as fileManagerExecute } from './file-manager/index.js';
 
 // Web Fetch — HTTPS page and JSON API fetching (Phase 5.5)
 export { execute as webFetchExecute } from './web-fetch/index.js';
+
+// Shell — shell command execution with special hardening (Phase 5.6)
+export { execute as shellExecute } from './shell/index.js';
