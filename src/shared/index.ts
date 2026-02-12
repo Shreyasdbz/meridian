@@ -31,6 +31,8 @@ export type {
   ValidationResult,
   StepValidation,
   AxisMessage,
+  MessageHandler,
+  ComponentRegistry,
   GearManifest,
   GearPermissions,
   GearResources,

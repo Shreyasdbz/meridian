@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { AxisMessage, AuditEntry } from '@meridian/shared';
 import { generateId, ValidationError } from '@meridian/shared';
 
-import { ComponentRegistry } from './registry.js';
+import { ComponentRegistryImpl } from './registry.js';
 import type { AuditWriter, Middleware, RouterLogger } from './router.js';
 import { MessageRouter, NoOpAuditWriter } from './router.js';
 
@@ -69,11 +69,11 @@ function createLogger(): RouterLogger & {
 // ComponentRegistry tests
 // ---------------------------------------------------------------------------
 
-describe('ComponentRegistry', () => {
-  let registry: ComponentRegistry;
+describe('ComponentRegistryImpl', () => {
+  let registry: ComponentRegistryImpl;
 
   beforeEach(() => {
-    registry = new ComponentRegistry();
+    registry = new ComponentRegistryImpl();
   });
 
   it('should register and retrieve a handler', () => {
@@ -163,11 +163,11 @@ describe('ComponentRegistry', () => {
 // ---------------------------------------------------------------------------
 
 describe('MessageRouter', () => {
-  let registry: ComponentRegistry;
+  let registry: ComponentRegistryImpl;
   let router: MessageRouter;
 
   beforeEach(() => {
-    registry = new ComponentRegistry();
+    registry = new ComponentRegistryImpl();
     router = new MessageRouter({ registry });
   });
 

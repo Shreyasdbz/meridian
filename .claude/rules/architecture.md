@@ -43,6 +43,7 @@
 - No circular dependencies between modules
 - No cross-module internal file imports — only through each module's `index.ts`
 - Enforced via ESLint `no-restricted-imports` or `dependency-cruiser`
+- `ComponentRegistry` interface and `MessageHandler` type live in `shared/` so registering components stay within the boundary. The implementation (`ComponentRegistryImpl`) lives in `axis/`.
 
 ## Job Lifecycle
 

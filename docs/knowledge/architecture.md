@@ -3010,6 +3010,7 @@ meridian/
 - `sentinel/` cannot import `journal/` (information barrier).
 - `axis/` cannot import LLM provider SDKs (no LLM dependency).
 - `shared/` imports nothing from other modules.
+- The `ComponentRegistry` interface and `MessageHandler` type live in `shared/types.ts` so registering components can depend on `shared/` only. The concrete implementation (`ComponentRegistryImpl`) lives in `axis/registry.ts`.
 
 **Published artifacts**:
 - `@meridian/cli` (npm) — single installable package.

@@ -906,13 +906,20 @@
 **Deliverables**:
 
 - `src/scout/index.ts` — Public API:
-  - `createScout(config, provider): Scout`
+  - `createScout(config: ScoutConfig, deps: ScoutDependencies): Scout` — config bundles provider, models, and options; deps provides Axis registry (deviation from original `createScout(config, provider)` for cleaner separation of configuration vs dependencies)
   - Scout registers as message handler with Axis for `plan.request` messages
   - Handles `plan.request` → returns `plan.response` (with plan or direct text)
-  - Model configuration: `primary` field used in v0.1, `secondary` field defined but ignored until v0.4
+  - Model configuration: `primaryModel` field used in v0.1, `secondaryModel` field defined but ignored until v0.4
+- `src/scout/scout.ts` — Scout component class:
+  - Wraps `Planner`, registers with Axis `ComponentRegistry`
+  - Converts between `AxisMessage` payload and `PlanRequest`/`PlanResult`
+  - Returns `error` type for `PlanError` responses, `plan.response` for `PlanResult`
+  - `dispose()` for clean shutdown unregistration
+  - Imports `ComponentRegistry` type from `@meridian/shared` (type-only import)
 - `src/scout/prompts/plan-generation.ts`:
   - Versioned prompt template with metadata (version, description, model compatibility)
-  - System prompt with safety rules (Section 5.2.8)
+  - System prompt with safety rules (Section 5.2.8) extracted as named constants
+  - `planner.ts` imports from the template module (no duplication)
 
 **Test Deliverables**:
 
@@ -929,6 +936,11 @@
     - JSON plan injection in text responses
   - Verify provenance tags are correctly applied to all external content
   - Note: Full adversarial prompt injection suite expanded in Phase 10.7 (v0.3)
+
+**Implementation Notes (Phase 3.5)**:
+
+- **ComponentRegistry interface extracted to `shared/`**: The original implementation imported `ComponentRegistry` from `axis/`, violating the module boundary rule (`scout/` depends only on `shared/`). The ESLint `no-restricted-imports` rules correctly flagged this. Resolved by extracting the `ComponentRegistry` interface and `MessageHandler` type to `shared/types.ts`, with the implementation class renamed to `ComponentRegistryImpl` in `axis/registry.ts`. This preserves the module boundary: Scout imports the interface from `@meridian/shared`, and Axis provides the concrete implementation. This pattern applies to all components that register with Axis (Sentinel, Journal, Bridge).
+- **Import path correction**: The initial implementation used a direct relative import (`../axis/registry.js`) which also violated the "no cross-module internal file imports" rule. This was fixed as part of the interface extraction above.
 
 ---
 

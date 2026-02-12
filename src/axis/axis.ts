@@ -25,7 +25,7 @@ import type { GearLookup } from './plan-validator.js';
 import { validatePlan } from './plan-validator.js';
 import { recoverJobs } from './recovery.js';
 import type { RecoveryResult } from './recovery.js';
-import { ComponentRegistry } from './registry.js';
+import { ComponentRegistryImpl } from './registry.js';
 import { MessageRouter } from './router.js';
 import { Watchdog } from './watchdog.js';
 import { WorkerPool } from './worker-pool.js';
@@ -72,7 +72,7 @@ export interface AxisOptions {
  * (e.g., component registration, message dispatch).
  */
 export interface AxisInternals {
-  readonly registry: ComponentRegistry;
+  readonly registry: ComponentRegistryImpl;
   readonly router: MessageRouter;
   readonly jobQueue: JobQueue;
   readonly workerPool: WorkerPool;
@@ -124,7 +124,7 @@ export class Axis {
   private readonly logger: AxisLogger;
 
   // Sub-systems
-  private readonly _registry: ComponentRegistry;
+  private readonly _registry: ComponentRegistryImpl;
   private readonly _router: MessageRouter;
   private readonly _jobQueue: JobQueue;
   private readonly _workerPool: WorkerPool;
@@ -148,7 +148,7 @@ export class Axis {
     // --- Initialize sub-systems ---
 
     // 1. Component registry
-    this._registry = new ComponentRegistry();
+    this._registry = new ComponentRegistryImpl();
 
     // 2. Audit log
     this._auditLog = new AuditLog({

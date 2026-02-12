@@ -11,7 +11,18 @@
 - All exported functions have explicit return types
 - Uses `unknown` instead of `any` (no `any` found in codebase)
 
-## Common Issues Found (None in Phase 2.8)
+### Phase 3.4 External Content Provenance
+- Provenance tagging is soft defense layer (documented in code comments)
+- Tag format: `<external_content source="..." sender="..." trust="...">[content]</external_content>`
+- User content NOT wrapped (prevents escaping legitimate angle brackets)
+- Both attribute values AND content body sanitized separately
+- Tag escape pattern is case-insensitive
+- `isInstructions` flag in return type makes contract explicit
+- Gear output convenience function uses `gear:${gearId}` format
+- Tests cover: all 5 source types, special chars, tag escapes, nested wrapping, unicode, empty/long content
+- Common issue: missing explicit return types on exported functions (found 1 in Phase 3.4)
+
+## Common Issues Found
 
 ### Architecture
 - All component boundaries respected
@@ -36,6 +47,8 @@
 - `/Users/shreyas/Development/Projects/meridian/src/axis/axis.ts` - Main Axis runtime class
 - `/Users/shreyas/Development/Projects/meridian/src/axis/index.ts` - Public barrel export
 - `/Users/shreyas/Development/Projects/meridian/tests/integration/axis-lifecycle.test.ts` - Integration tests
+- `/Users/shreyas/Development/Projects/meridian/src/scout/provenance.ts` - External content tagging (Phase 3.4)
+- `/Users/shreyas/Development/Projects/meridian/src/scout/provenance.test.ts` - Provenance tests (43 tests)
 
 ## Testing Patterns
 - Integration tests use temporary directories with random names

@@ -1,5 +1,19 @@
 // @meridian/scout — public API
 
+// Scout component (Phase 3.5)
+export { Scout, createScout } from './scout.js';
+export type { ScoutConfig, ScoutDependencies } from './scout.js';
+
+// Versioned prompt templates (Phase 3.5)
+export {
+  PLAN_GENERATION_TEMPLATE,
+  SCOUT_IDENTITY,
+  SAFETY_RULES,
+  FORCE_FULL_PATH_INSTRUCTION,
+  EXECUTION_PLAN_SCHEMA,
+} from './prompts/plan-generation.js';
+export type { PromptTemplate } from './prompts/plan-generation.js';
+
 // Provider abstraction (Phase 3.1)
 export {
   createProvider,

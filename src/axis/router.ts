@@ -12,7 +12,7 @@ import {
   MESSAGE_WARNING_THRESHOLD_BYTES,
 } from '@meridian/shared';
 
-import type { ComponentRegistry } from './registry.js';
+import type { ComponentRegistryImpl } from './registry.js';
 
 // ---------------------------------------------------------------------------
 // AuditWriter interface
@@ -56,7 +56,7 @@ export type Middleware = (
 // ---------------------------------------------------------------------------
 
 export interface MessageRouterOptions {
-  registry: ComponentRegistry;
+  registry: ComponentRegistryImpl;
   auditWriter?: AuditWriter;
   logger?: RouterLogger;
 }
@@ -240,7 +240,7 @@ function createSizeValidationMiddleware(logger?: RouterLogger): Middleware {
  *   6. Handler invocation
  */
 export class MessageRouter {
-  private readonly registry: ComponentRegistry;
+  private readonly registry: ComponentRegistryImpl;
   private readonly middlewares: Middleware[] = [];
 
   constructor(options: MessageRouterOptions) {

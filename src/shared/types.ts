@@ -215,6 +215,28 @@ export interface AxisMessage {
 }
 
 /**
+ * Handler function for processing messages dispatched through Axis.
+ * Each component registers one of these during startup (Section 5.1.14).
+ */
+export type MessageHandler = (
+  message: AxisMessage,
+  signal: AbortSignal,
+) => Promise<AxisMessage>;
+
+/**
+ * Interface for component registration with Axis (Section 5.1.14).
+ *
+ * Core components (Scout, Sentinel, Journal, Bridge) register message handlers
+ * with Axis during startup and unregister during shutdown. This interface
+ * lives in shared/ so components can depend on it without importing axis/.
+ */
+export interface ComponentRegistry {
+  register(componentId: ComponentId, handler: MessageHandler): void;
+  unregister(componentId: ComponentId): void;
+  has(componentId: ComponentId): boolean;
+}
+
+/**
  * GearManifest — declarative permission manifest for a Gear plugin (Section 5.6.2).
  */
 export interface GearManifest {

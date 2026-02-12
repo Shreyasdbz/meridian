@@ -1,17 +1,12 @@
 // @meridian/axis — Component registry
 // Manages component registration and handler lookup for in-process message dispatch.
 
-import type { AxisMessage, ComponentId } from '@meridian/shared';
+import type {
+  ComponentId,
+  ComponentRegistry,
+  MessageHandler,
+} from '@meridian/shared';
 import { ConflictError, NotFoundError, ValidationError } from '@meridian/shared';
-
-/**
- * Handler function for processing messages dispatched through Axis.
- * Each component registers one of these during startup.
- */
-export type MessageHandler = (
-  message: AxisMessage,
-  signal: AbortSignal,
-) => Promise<AxisMessage>;
 
 /**
  * Regex for validating ComponentId format.
@@ -21,12 +16,15 @@ export type MessageHandler = (
 const COMPONENT_ID_REGEX = /^(bridge|scout|sentinel|journal|gear:[a-z0-9_-]+)$/;
 
 /**
- * ComponentRegistry — manages registration and lookup of component message handlers.
+ * ComponentRegistryImpl — manages registration and lookup of component message handlers.
+ *
+ * Implements the ComponentRegistry interface from shared/ for use by registering
+ * components, and adds additional lookup methods for the Axis router.
  *
  * Each core component registers a handler during startup. The router uses
  * this registry to find the appropriate handler when dispatching messages.
  */
-export class ComponentRegistry {
+export class ComponentRegistryImpl implements ComponentRegistry {
   private readonly handlers = new Map<string, MessageHandler>();
 
   /**
