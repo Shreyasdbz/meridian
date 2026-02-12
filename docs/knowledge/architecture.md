@@ -691,7 +691,7 @@ For retriable errors, the backoff formula is: `delay = min(baseDelay * 2^attempt
 
 #### 5.1.12 Fault Tolerance
 
-- **Crash recovery**: On restart, Axis loads all non-terminal jobs from SQLite. Jobs that were `executing` at crash time are evaluated: steps with `started` entries in the execution log are marked `failed` (see Idempotency), and the job is returned to `pending` for re-evaluation.
+- **Crash recovery**: On restart, Axis loads all non-terminal jobs from SQLite. Jobs that were `executing` at crash time are evaluated: steps with `started` entries in the execution log are marked `failed` (see Idempotency), and the job is returned to `pending` for re-evaluation. Jobs in `planning` or `validating` are also reset to `pending` (their worker is gone, so they cannot make progress). Jobs in `awaiting_approval` are left as-is (they require user action).
 - **Step-level retry**: Individual execution steps can be retried (up to `stepAttempts`) based on error classification before the entire job is marked as failed.
 - **Circuit breaker**: If a Gear repeatedly fails (3 consecutive failures within 5 minutes), Axis temporarily disables it and notifies the user.
 - **Watchdog**: A lightweight health check loop monitors Axis's own responsiveness. If the event loop is blocked for >10 seconds, Axis logs a warning and triggers a diagnostic dump.

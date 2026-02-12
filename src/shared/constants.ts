@@ -187,9 +187,6 @@ export const EVENT_LOOP_P99_WARN_MS = 50;
 /** Event loop p99 error threshold (ms) */
 export const EVENT_LOOP_P99_ERROR_MS = 200;
 
-/** Event loop block diagnostic threshold (ms) */
-export const EVENT_LOOP_BLOCK_DIAGNOSTIC_MS = 5_000;
-
 // ---------------------------------------------------------------------------
 // Disk monitoring (Section 11.3)
 // ---------------------------------------------------------------------------

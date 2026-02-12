@@ -667,6 +667,15 @@
 - Cold start budget targets measured (Section 11.6): Node.js < 800ms, SQLite < 300ms, migrations < 200ms, Fastify < 200ms, Gear manifests < 300ms, job recovery < 200ms (total < 3s on RPi with SSD)
 - Items lazy-loaded after startup (not blocking cold start): Ollama connection, LLM provider connections, sqlite-vec extension, semantic cache
 
+**Implementation Deviations**:
+
+- **Crash recovery scope broadened**: Architecture Section 5.1.12 explicitly mentions only `executing` jobs for crash recovery. Implementation also resets `planning` and `validating` jobs to `pending`, since these states indicate a crash during the Scout/Sentinel pipeline — leaving them in-flight would leave orphaned jobs. Jobs in `awaiting_approval` are correctly left untouched (they require user action).
+- **Watchdog p99 latency monitoring**: Architecture Section 5.1.12 specifies block detection and diagnostic dump. Implementation additionally monitors p99 event loop latency via `monitorEventLoopDelay` with configurable warn/error thresholds (50ms/200ms). This is a positive enhancement that provides early warning before hard blocks occur.
+- **Audit databases excluded from maintenance**: `maintenance-basic.ts` maintains `meridian`, `journal`, and `sentinel` databases. Audit databases are excluded because they use monthly partitioning and are append-only — VACUUM and ANALYZE have minimal benefit and could interfere with partitioned file management.
+- **`maintenance-basic.test.ts` added**: The plan lists 3 test files (recovery, watchdog, lifecycle). A fourth test file was added for `maintenance-basic.ts` per project conventions requiring tests for all new functionality.
+- **`EVENT_LOOP_BLOCK_DIAGNOSTIC_MS` constant removed**: The shared constants originally included a 5s diagnostic threshold that was unused — the watchdog uses `WATCHDOG_BLOCK_THRESHOLD_MS` (10s) instead. The unused constant was removed during implementation to avoid confusion.
+- **`attempts` counter not incremented on crash recovery**: Recovery resets jobs to `pending` without incrementing `attempts`. This is intentional — crash-interrupted attempts didn't complete, so they shouldn't count against the retry limit. The `attempts` field will be incremented by the pipeline when a job starts actual execution (future phases).
+
 ---
 
 ### Phase 2.7: Audit Logging

@@ -73,3 +73,35 @@ export type {
   PlanValidationIssue,
   PlanValidationIssueType,
 } from './plan-validator.js';
+
+// Crash recovery (Section 5.1.12)
+export { recoverJobs } from './recovery.js';
+export type { RecoveryLogger, RecoveryResult } from './recovery.js';
+
+// Event loop watchdog (Section 5.1.12)
+export { Watchdog } from './watchdog.js';
+export type {
+  WatchdogLogger,
+  WatchdogOptions,
+  DiagnosticDump,
+} from './watchdog.js';
+
+// Basic periodic maintenance (Section 8.3)
+export { BasicMaintenance } from './maintenance-basic.js';
+export type {
+  MaintenanceLogger,
+  MaintenanceOptions,
+  MaintenanceRunResult,
+} from './maintenance-basic.js';
+
+// Startup & shutdown lifecycle (Section 5.1.14)
+export { LifecycleManager } from './lifecycle.js';
+export type {
+  LifecycleLogger,
+  LifecycleOptions,
+  StartupPhase,
+  DiagnosticCheck,
+  DiagnosticResult,
+  StartupStepHandler,
+  ShutdownHandler,
+} from './lifecycle.js';

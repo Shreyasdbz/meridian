@@ -174,7 +174,6 @@ export {
   // Event loop monitoring
   EVENT_LOOP_P99_WARN_MS,
   EVENT_LOOP_P99_ERROR_MS,
-  EVENT_LOOP_BLOCK_DIAGNOSTIC_MS,
 
   // Disk monitoring
   DISK_USAGE_WARN_PERCENT,
