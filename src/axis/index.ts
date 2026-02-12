@@ -65,3 +65,11 @@ export type {
   WorkerPoolLogger,
   WorkerPoolOptions,
 } from './worker-pool.js';
+
+// Plan pre-validation (Section 5.1.8)
+export { validatePlan } from './plan-validator.js';
+export type {
+  GearLookup,
+  PlanValidationIssue,
+  PlanValidationIssueType,
+} from './plan-validator.js';
