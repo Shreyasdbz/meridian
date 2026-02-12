@@ -862,6 +862,15 @@
 - `src/scout/failure-handler.test.ts`:
   - Each failure mode triggers correct response
 
+**Implementation Notes (Phase 3.3)**:
+
+- **Fast-path verification location**: The architecture document (Section 4.3) describes fast-path verification as an "Axis verification" responsibility. In Phase 3.3, the verification functions are implemented in `path-detector.ts` within the Scout module (as specified by this plan) and are exported for reuse. During Phase 3.5 (Scout Integration), when Scout registers with Axis via message routing, Axis will invoke these verification functions on Scout's `plan.response` messages before delivering fast-path responses to Bridge. The current phase builds the detection logic; Phase 3.5 wires the Axis-level integration.
+- **journalSkip flag**: The `journalSkip` flag is set by the LLM via system prompt instructions (Scout is instructed to include `journalSkip: true` for simple info-retrieval tasks). This is LLM-driven rather than deterministic task classification, as Scout is the component that understands task semantics. The flag is preserved through plan parsing and passed to Axis.
+- **Additional defensive features**: The planner includes JSON-in-markdown-code-block detection and automatic plan ID/jobId injection as defensive measures not explicitly in the plan but consistent with the architecture's fail-safe principles.
+- **Audit log content**: The `llm.call` audit entry includes the full `contentSent` array (all messages sent to the LLM) per Section 7.3 ("every external LLM call logged in audit trail including content sent"). On storage-constrained deployments, the audit writer implementation may truncate or summarize this field — the planner always provides the full content and leaves storage decisions to the audit infrastructure.
+- **System prompt safety rules**: All architecture-specified safety rules from Section 5.2.8 are included in the system prompt, including prompt injection flagging instructions, Sentinel review notification, and secrets access restrictions. The full versioned prompt template with metadata (version, description, model compatibility) will be extracted to `prompts/plan-generation.ts` in Phase 3.5.
+- **Fast-path verification false positives**: Common action names (e.g., "read", "write", "search") in the Gear catalog may cause false positives during fast-path verification when they appear as normal verbs in conversational text. This is acceptable per the architecture's fail-safe principle ("when uncertain, default to full path") — false positives result in safe re-routing while false negatives could bypass safety checks.
+
 ---
 
 ### Phase 3.4: External Content Provenance
