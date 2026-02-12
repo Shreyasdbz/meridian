@@ -994,6 +994,11 @@
   - Risk level calculation for each action type
   - Divergence logging threshold
 
+**Implementation Notes**:
+
+- **Credential usage policy deviation**: The architecture (Section 5.3.5) specifies "Approved for declared Gear, logged" for credential usage. The Phase 4.1 implementation defaults to `needs_user_approval` for all credential usage because the Gear manifest system (required to verify "declared Gear") is not yet available (Phase 5). This is a safe-by-default fallback. Credential usage is logged for audit as required. When Phase 5 (Gear Manifest & Registry) is implemented, the credential policy should be refined to auto-approve declared credentials while maintaining the logging requirement.
+- **Additional edge case coverage**: Tests include relative path rejection, path traversal prevention, and malformed/dangerous URL handling (javascript:, file://) beyond the spec minimum.
+
 ---
 
 ### Phase 4.2: Approval Flow
