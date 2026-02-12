@@ -862,7 +862,7 @@ Scout must translate between Meridian's internal plan format and each LLM provid
 - **Google**: Gear actions become `FunctionDeclaration` entries.
 - **Ollama**: Gear actions are mapped to the model's tool format when supported.
 
-**Inbound (provider to Meridian):** Provider-specific tool call responses are parsed back into Meridian `ExecutionStep` objects. The adapter extracts the Gear identifier, action name, and parameters from the provider's response format and populates the typed fields.
+**Inbound (provider to Meridian):** Provider-specific tool call responses are parsed back into Meridian `ToolCall` objects at the provider adapter level. The adapter extracts the tool call ID, name, and input parameters from the provider's response format. The planner layer then converts these `ToolCall` objects into `ExecutionStep` objects with Gear identifiers, action names, and validated parameters.
 
 **Fallback mode:** For models that do not support native tool calling (some Ollama models, older APIs), Scout falls back to a structured-output prompting mode. The system prompt includes the plan JSON Schema and explicit instructions to produce a conforming JSON response. The output is parsed and validated against the same schema.
 

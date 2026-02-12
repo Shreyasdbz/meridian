@@ -529,14 +529,36 @@ export interface LLMProvider {
 }
 
 /**
+ * ToolDefinition — describes a tool available to the LLM (Section 5.2.5).
+ * Used to translate Gear actions into provider-native tool schemas.
+ */
+export interface ToolDefinition {
+  name: string;
+  description: string;
+  inputSchema: Record<string, unknown>;
+}
+
+/**
+ * ToolCall — a tool invocation returned by the LLM (Section 5.2.5).
+ * Provider adapters parse native tool call responses into this format.
+ */
+export interface ToolCall {
+  id: string;
+  name: string;
+  input: Record<string, unknown>;
+}
+
+/**
  * ChatRequest — input to LLMProvider.chat().
  */
 export interface ChatRequest {
   model: string;
   messages: ChatMessage[];
+  tools?: ToolDefinition[];
   temperature?: number;
   maxTokens?: number;
   stopSequences?: string[];
+  signal?: AbortSignal;
   metadata?: Record<string, unknown>;
 }
 
@@ -554,6 +576,7 @@ export interface ChatMessage {
 export interface ChatChunk {
   content: string;
   done: boolean;
+  toolCalls?: ToolCall[];
   usage?: {
     inputTokens?: number;
     outputTokens?: number;

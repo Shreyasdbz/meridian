@@ -753,7 +753,7 @@
   - Streaming response parsing
   - Tool use translation (Section 5.2.5):
     - Outbound: Gear actions → Anthropic `tools` entries with `input_schema`
-    - Inbound: Anthropic tool call responses → `ExecutionStep` objects
+    - Inbound: Anthropic tool call responses → `ToolCall` objects (converted to `ExecutionStep` in Phase 3.3 planner layer)
   - Error mapping to Meridian error types
   - Token estimation
 - `providers/index.ts` — Provider factory:

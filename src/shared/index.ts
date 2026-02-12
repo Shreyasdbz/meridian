@@ -68,6 +68,8 @@ export type {
 
   // LLM
   LLMProvider,
+  ToolDefinition,
+  ToolCall,
   ChatRequest,
   ChatMessage,
   ChatChunk,
