@@ -501,7 +501,7 @@ describe('ChatInput', () => {
 // ===========================================================================
 
 describe('ChatInput / shortcut', () => {
-  it('should focus the input when / is pressed globally', () => {
+  it('should focus the input when meridian:focus-chat-input event is dispatched', () => {
     render(
       <ChatInput
         value=""
@@ -513,10 +513,9 @@ describe('ChatInput / shortcut', () => {
     const input = screen.getByTestId('chat-input');
     expect(document.activeElement).not.toBe(input);
 
-    // Press / on the body
+    // Layout dispatches this custom event when / is pressed
     act(() => {
-      const event = new KeyboardEvent('keydown', { key: '/', bubbles: true });
-      document.dispatchEvent(event);
+      window.dispatchEvent(new CustomEvent('meridian:focus-chat-input'));
     });
 
     expect(document.activeElement).toBe(input);

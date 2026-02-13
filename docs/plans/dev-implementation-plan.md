@@ -1821,6 +1821,12 @@
 - Settings persistence via API
 - Developer mode toggle behavior
 
+**Implementation Notes**:
+
+- **Settings panel as overlay**: Settings is rendered as a full-page overlay within Layout (controlled by local state) rather than a separate route, keeping navigation simple and avoiding BrowserRouter complexity. Accessible via header gear icon and command palette. No architecture deviation — Bridge UI implementation detail.
+- **`/` shortcut centralized in Layout**: The `/` (focus chat input) shortcut is handled globally in Layout via a `meridian:focus-chat-input` custom event, rather than each component listening for keyboard events independently. ChatInput listens for this event. This avoids duplicate handlers and ensures the command palette's "Focus chat input" command uses the same mechanism.
+- **Same-provider warning dismissible**: Section 6.1.2 says "persistent warning banner" — implemented as a dismissible alert per session (reappears on next page load). The user must see and acknowledge it, but can dismiss it to reduce noise during the session.
+
 ---
 
 ### Phase 7.7: Notification System & Accessibility

@@ -51,26 +51,15 @@ export function ChatInput({
     [disabled, value, onSend],
   );
 
-  // Global `/` shortcut to focus input
+  // Listen for focus-chat-input events from Layout shortcuts and Command Palette
   useEffect(() => {
-    const handleGlobalKeyDown = (e: KeyboardEvent): void => {
-      // Only handle `/` when not already in an input/textarea
-      if (
-        e.key === '/' &&
-        !e.metaKey &&
-        !e.ctrlKey &&
-        !e.altKey &&
-        !(e.target instanceof HTMLInputElement) &&
-        !(e.target instanceof HTMLTextAreaElement)
-      ) {
-        e.preventDefault();
-        textareaRef.current?.focus();
-      }
+    const handleFocusEvent = (): void => {
+      textareaRef.current?.focus();
     };
 
-    document.addEventListener('keydown', handleGlobalKeyDown);
+    window.addEventListener('meridian:focus-chat-input', handleFocusEvent);
     return () => {
-      document.removeEventListener('keydown', handleGlobalKeyDown);
+      window.removeEventListener('meridian:focus-chat-input', handleFocusEvent);
     };
   }, []);
 
