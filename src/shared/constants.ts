@@ -115,11 +115,29 @@ export const API_RATE_LIMIT_PER_MINUTE = 100;
 /** Default session duration (7 days, in hours) */
 export const DEFAULT_SESSION_DURATION_HOURS = 168;
 
-/** Brute-force protection: failed attempts before lockout */
+/** Brute-force protection: failed attempts before exponential backoff */
 export const BRUTE_FORCE_THRESHOLD = 5;
 
-/** Brute-force protection: lockout duration (minutes) */
+/** Brute-force protection: full lockout after this many failures */
 export const BRUTE_FORCE_LOCKOUT = 20;
+
+/** Brute-force protection: lockout duration (minutes) */
+export const BRUTE_FORCE_LOCKOUT_DURATION_MINUTES = 30;
+
+/** Bcrypt salt rounds for password hashing */
+export const BCRYPT_SALT_ROUNDS = 12;
+
+/** Session token size in bytes (produces 64-char hex string) */
+export const SESSION_TOKEN_BYTES = 32;
+
+/** CSRF token size in bytes (produces 64-char hex string) */
+export const CSRF_TOKEN_BYTES = 32;
+
+/** Approval nonce size in bytes (produces 64-char hex string) */
+export const APPROVAL_NONCE_BYTES = 32;
+
+/** Approval nonce TTL in hours — stale/consumed nonces older than this are purged */
+export const APPROVAL_NONCE_TTL_HOURS = 24;
 
 // ---------------------------------------------------------------------------
 // Sentinel Memory (Section 5.3.8)

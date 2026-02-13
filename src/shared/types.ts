@@ -521,6 +521,53 @@ export interface MemoryResult {
 }
 
 // ---------------------------------------------------------------------------
+// Authentication (Section 6.3)
+// ---------------------------------------------------------------------------
+
+/**
+ * Session — a user session stored in meridian.db (Section 6.3).
+ */
+export interface Session {
+  id: string;
+  tokenHash: string;
+  csrfToken: string;
+  createdAt: string;
+  expiresAt: string;
+  lastActiveAt: string;
+  ipAddress?: string;
+  userAgent?: string;
+}
+
+/**
+ * AuthContext — attached to authenticated requests by middleware.
+ */
+export interface AuthContext {
+  sessionId: string;
+  csrfToken: string;
+}
+
+/**
+ * LoginResult — returned from a login attempt.
+ */
+export interface LoginResult {
+  success: boolean;
+  session?: Session;
+  token?: string;
+  error?: string;
+  retryAfterMs?: number;
+}
+
+/**
+ * BruteForceStatus — current state of brute-force protection for an IP.
+ */
+export interface BruteForceStatus {
+  allowed: boolean;
+  recentFailures: number;
+  retryAfterMs?: number;
+  lockedOut: boolean;
+}
+
+// ---------------------------------------------------------------------------
 // Secrets (Section 6.4)
 // ---------------------------------------------------------------------------
 

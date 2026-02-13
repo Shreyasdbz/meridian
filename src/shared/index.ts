@@ -65,6 +65,12 @@ export type {
   MemoryQuery,
   MemoryResult,
 
+  // Authentication
+  Session,
+  AuthContext,
+  LoginResult,
+  BruteForceStatus,
+
   // Secrets
   Secret,
 
@@ -152,6 +158,12 @@ export {
   DEFAULT_SESSION_DURATION_HOURS,
   BRUTE_FORCE_THRESHOLD,
   BRUTE_FORCE_LOCKOUT,
+  BRUTE_FORCE_LOCKOUT_DURATION_MINUTES,
+  BCRYPT_SALT_ROUNDS,
+  SESSION_TOKEN_BYTES,
+  CSRF_TOKEN_BYTES,
+  APPROVAL_NONCE_BYTES,
+  APPROVAL_NONCE_TTL_HOURS,
 
   // Sentinel Memory
   SENTINEL_MEMORY_CAP,

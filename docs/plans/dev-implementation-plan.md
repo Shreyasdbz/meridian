@@ -1442,6 +1442,21 @@
   - Brute-force protection
   - CSRF protection
 
+**Implementation Notes**:
+
+- Validation: 69 tests (26 auth unit + 26 server integration + 17 security) covering onboarding, password verification, session management, CSRF, brute-force, approval nonces, security headers, rate limiting, credential filtering, system prompt leakage detection, and cookie attribute verification.
+- Additional test coverage beyond spec: session invalidation after logout, fabricated token rejection, session token hashing verification (not stored plaintext), unique CSRF tokens per session, Bearer token auth, approval nonce one-time use and job binding, nonce cleanup.
+- `Strict-Transport-Security` header is correctly omitted — TLS is a v0.2 feature (Phase 9.7). The header hook is ready to add the conditional once TLS config exists.
+
+**Implementation Deviations**:
+
+- **Rate limiting via plugin, not custom middleware**: Plan lists "Rate limiting middleware" under `middleware.ts`, but implementation uses `@fastify/rate-limit` plugin configured in `server.ts`. This is architecturally superior — the battle-tested plugin handles edge cases (per-IP tracking, `Retry-After` headers, 429 responses) that a custom middleware would need to reimplement. No functional difference.
+- **CSRF middleware also validates PATCH**: Architecture Section 6.5.4 lists POST, PUT, DELETE. Implementation additionally validates PATCH, which is also a state-changing HTTP method. This is a security-positive enhancement.
+- **CSRF uses `crypto.timingSafeEqual`**: Plan and original implementation used a manual character-by-character XOR loop. Upgraded to `crypto.timingSafeEqual` which is the Node.js standard for constant-time comparison, with a dummy comparison on length mismatch to avoid leaking length via timing.
+- **Exponential backoff capped at lockout duration**: Plan specifies `2^(failures - threshold)` seconds. Uncapped, this produces backoffs exceeding the lockout duration (e.g., 4.5 hours at 19 failures vs 30-minute lockout at 20). Implementation caps backoff at `BRUTE_FORCE_LOCKOUT_DURATION_MINUTES * 60` seconds so the backoff curve never exceeds the lockout penalty.
+- **Approval nonce cleanup added**: Plan specifies nonce creation and consumption but no cleanup mechanism. Added `cleanExpiredNonces()` method with `APPROVAL_NONCE_TTL_HOURS` (24h) constant, paralleling `cleanExpiredSessions()`. Purges consumed nonces and unconsumed nonces older than the TTL.
+- **System prompt leakage: flags only, does not block**: Architecture says "flag for review." Implementation logs a warning but does not modify or block the response. This matches the architecture's language ("flag" ≠ "block") and avoids false-positive censorship of legitimate responses.
+
 ---
 
 ### Phase 6.2: REST API Endpoints
