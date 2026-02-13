@@ -33,3 +33,4 @@ export {
 export { OnboardingWizard } from './pages/onboarding/index.js';
 export { LoginPage } from './pages/login.js';
 export { ChatPage } from './pages/chat/index.js';
+export { MissionControl } from './pages/mission-control/index.js';

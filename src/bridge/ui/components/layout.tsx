@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Outlet } from 'react-router-dom';
 
 import { ChatPage } from '../pages/chat/index.js';
+import { MissionControl } from '../pages/mission-control/index.js';
 import { useUIStore } from '../stores/ui-store.js';
 
 import { Badge } from './badge.js';
@@ -151,44 +152,17 @@ export function Layout() {
               <ChatPage />
             </div>
             <div className="flex w-[480px] shrink-0 flex-col overflow-hidden">
-              <MissionControlPlaceholder />
+              <MissionControl />
             </div>
           </>
         ) : (
           // Narrow: toggled view
-          <>{activeView === 'chat' ? <ChatPage /> : <MissionControlPlaceholder />}</>
+          <>{activeView === 'chat' ? <ChatPage /> : <MissionControl />}</>
         )}
       </main>
 
       {/* Router outlet for modals/overlays */}
       <Outlet />
-    </div>
-  );
-}
-
-/** Placeholder for the Mission Control view (Phase 7.4). */
-function MissionControlPlaceholder() {
-  return (
-    <div className="flex flex-1 flex-col items-center justify-center p-8 text-center">
-      <div className="mb-4 rounded-full bg-meridian-500/10 p-4">
-        <svg
-          className="h-8 w-8 text-meridian-500"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-          strokeWidth={1.5}
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z"
-          />
-        </svg>
-      </div>
-      <h2 className="text-lg font-medium text-gray-900 dark:text-gray-100">Mission Control</h2>
-      <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-        Dashboard view will be available in Phase 7.4
-      </p>
     </div>
   );
 }
