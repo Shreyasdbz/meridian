@@ -1,7 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-import type { AxisMessage, AuditEntry } from '@meridian/shared';
-import { generateId, ValidationError } from '@meridian/shared';
+import type { AxisMessage, AuditEntry, SignedEnvelope } from '@meridian/shared';
+import {
+  generateId,
+  ValidationError,
+  SigningService,
+  generateKeypair,
+  signPayload,
+} from '@meridian/shared';
 
 import { ComponentRegistryImpl } from './registry.js';
 import type { AuditWriter, Middleware, RouterLogger } from './router.js';
@@ -552,6 +558,170 @@ describe('MessageRouter', () => {
           riskLevel: 'low',
         });
       }).not.toThrow();
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Ed25519 signature verification middleware (v0.2)
+  // ---------------------------------------------------------------------------
+
+  describe('signature verification middleware', () => {
+    let signingService: SigningService;
+    let scoutKeypair: ReturnType<typeof generateKeypair>;
+    let signedRouter: MessageRouter;
+
+    beforeEach(() => {
+      signingService = new SigningService();
+      scoutKeypair = generateKeypair();
+      signingService.registerPublicKey('scout', scoutKeypair.publicKey);
+
+      // Also register bridge's key for sending messages
+      const bridgeKeypair = generateKeypair();
+      signingService.registerPublicKey('bridge', bridgeKeypair.publicKey);
+
+      signedRouter = new MessageRouter({
+        registry,
+        signingService,
+      });
+
+      // Store bridge keypair for test use
+      (signedRouter as unknown as Record<string, unknown>)['_testBridgeKeypair'] = bridgeKeypair;
+    });
+
+    it('should reject messages without a signed envelope', async () => {
+      registry.register('scout', createEchoHandler());
+
+      const message = createMessage({ to: 'scout' });
+      const response = await signedRouter.dispatch(message);
+
+      expect(response.type).toBe('error');
+      const payload = response.payload as Record<string, unknown>;
+      expect(String(payload['message'])).toContain('missing signature envelope');
+    });
+
+    it('should accept messages with a valid signed envelope', async () => {
+      registry.register('scout', createEchoHandler());
+
+      const bridgeKeypair = (signedRouter as unknown as Record<string, unknown>)['_testBridgeKeypair'] as ReturnType<typeof generateKeypair>;
+
+      const messagePayload = { content: 'hello' };
+      const envelope = signPayload(
+        messagePayload,
+        bridgeKeypair.privateKey,
+        'bridge',
+      );
+
+      const message = createMessage({
+        to: 'scout',
+        payload: messagePayload,
+        metadata: {
+          _signedEnvelope: envelope,
+        },
+      });
+
+      const response = await signedRouter.dispatch(message);
+
+      expect(response.type).toBe('plan.response');
+      expect(response.correlationId).toBe(message.correlationId);
+    });
+
+    it('should reject messages where signer does not match sender', async () => {
+      registry.register('scout', createEchoHandler());
+
+      // Sign as scout but send as bridge
+      const envelope = signPayload(
+        { content: 'hello' },
+        scoutKeypair.privateKey,
+        'scout', // signing as scout
+      );
+
+      const message = createMessage({
+        from: 'bridge', // claiming to be bridge
+        to: 'scout',
+        metadata: {
+          _signedEnvelope: envelope,
+        },
+      });
+
+      const response = await signedRouter.dispatch(message);
+
+      expect(response.type).toBe('error');
+      const payload = response.payload as Record<string, unknown>;
+      expect(String(payload['message'])).toContain('does not match');
+    });
+
+    it('should reject messages with invalid signatures', async () => {
+      registry.register('scout', createEchoHandler());
+
+      const bridgeKeypair = (signedRouter as unknown as Record<string, unknown>)['_testBridgeKeypair'] as ReturnType<typeof generateKeypair>;
+
+      const envelope = signPayload(
+        { content: 'hello' },
+        bridgeKeypair.privateKey,
+        'bridge',
+      );
+
+      // Tamper with the signature
+      const tamperedEnvelope: SignedEnvelope = {
+        ...envelope,
+        signature: Buffer.alloc(64, 0).toString('base64'),
+      };
+
+      const message = createMessage({
+        to: 'scout',
+        metadata: {
+          _signedEnvelope: tamperedEnvelope,
+        },
+      });
+
+      const response = await signedRouter.dispatch(message);
+
+      expect(response.type).toBe('error');
+      const payload = response.payload as Record<string, unknown>;
+      expect(String(payload['message'])).toContain('Signature verification failed');
+    });
+
+    it('should reject replayed messages', async () => {
+      registry.register('scout', createEchoHandler());
+
+      const bridgeKeypair = (signedRouter as unknown as Record<string, unknown>)['_testBridgeKeypair'] as ReturnType<typeof generateKeypair>;
+
+      const envelope = signPayload(
+        { content: 'hello' },
+        bridgeKeypair.privateKey,
+        'bridge',
+      );
+
+      const message1 = createMessage({
+        to: 'scout',
+        metadata: { _signedEnvelope: envelope },
+      });
+
+      const response1 = await signedRouter.dispatch(message1);
+      expect(response1.type).toBe('plan.response');
+
+      // Replay the same message
+      const message2 = createMessage({
+        to: 'scout',
+        metadata: { _signedEnvelope: envelope },
+      });
+
+      const response2 = await signedRouter.dispatch(message2);
+      expect(response2.type).toBe('error');
+      const payload = response2.payload as Record<string, unknown>;
+      expect(String(payload['message'])).toContain('replay');
+    });
+
+    it('should work without signing service (v0.1 mode)', async () => {
+      // Create a router without signing service
+      const unsignedRouter = new MessageRouter({ registry });
+      registry.register('scout', createEchoHandler());
+
+      const message = createMessage({ to: 'scout' });
+      const response = await unsignedRouter.dispatch(message);
+
+      // Should succeed without any signature
+      expect(response.type).toBe('plan.response');
     });
   });
 });

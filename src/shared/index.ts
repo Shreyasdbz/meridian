@@ -279,3 +279,21 @@ export { Logger, createLogger, redact } from './logger.js';
 // Secrets vault
 export type { SecretMetadata, SecretRotationWarning } from './secrets.js';
 export { SecretsVault } from './secrets.js';
+
+// Ed25519 signing (Section 6.3, v0.2)
+export type {
+  Ed25519Keypair,
+  SignedEnvelope,
+  SigningServiceOptions,
+  VerificationResult,
+} from './signing.js';
+export {
+  generateKeypair,
+  generateEphemeralKeypair,
+  zeroPrivateKey,
+  signPayload,
+  verifyPayload,
+  ReplayGuard,
+  KeyRegistry,
+  SigningService,
+} from './signing.js';

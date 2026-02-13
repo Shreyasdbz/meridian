@@ -1,11 +1,13 @@
 // @meridian/gear — Host-side Gear execution and communication (Section 5.6.3, 5.6.4)
 // Manages sandbox lifecycle, message protocol, integrity checks, and provenance tagging.
 
-import type { GearManifest, Result } from '@meridian/shared';
+import type { GearManifest, Result, Ed25519Keypair, ComponentId } from '@meridian/shared';
 import {
   ok,
   err,
   DEFAULT_GEAR_TIMEOUT_MS,
+  generateEphemeralKeypair,
+  zeroPrivateKey,
 } from '@meridian/shared';
 
 import { computeChecksum } from '../manifest.js';
@@ -24,6 +26,8 @@ import {
   signMessage,
   verifySignature,
   generateSigningKey,
+  signSandboxRequest,
+  verifySandboxResponseSignature,
 } from './process-sandbox.js';
 
 // ---------------------------------------------------------------------------
@@ -95,6 +99,21 @@ export interface GearHostConfig {
   disableGear: (gearId: string) => Promise<void>;
   /** Function to retrieve secrets for a Gear. */
   getSecrets?: (gearId: string, secretNames: string[]) => Promise<Map<string, Buffer>>;
+  /**
+   * Enable Ed25519 ephemeral keypair signing for Gear communication (v0.2).
+   * When true, each Gear execution gets a fresh Ed25519 keypair.
+   */
+  useEd25519?: boolean;
+  /**
+   * Callback to register an ephemeral public key with the signing service.
+   * Called when a Gear execution starts. The key should be removed when
+   * the execution completes (handled by GearHost).
+   */
+  onEphemeralKeyRegistered?: (gearComponentId: ComponentId, publicKey: Buffer) => void;
+  /**
+   * Callback to unregister an ephemeral public key after execution completes.
+   */
+  onEphemeralKeyRemoved?: (gearComponentId: ComponentId) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -107,9 +126,10 @@ export interface GearHostConfig {
  * Responsibilities:
  * 1. Integrity check: re-compute SHA-256 before execution
  * 2. Sandbox lifecycle: create -> execute -> destroy
- * 3. Message protocol: JSON over stdin/stdout with HMAC-SHA256
- * 4. Timeout enforcement: SIGTERM -> grace period -> SIGKILL
- * 5. Output provenance tagging: wraps all Gear output with source tag
+ * 3. Message protocol: JSON over stdin/stdout with HMAC-SHA256 (v0.1) or Ed25519 (v0.2)
+ * 4. Ephemeral keypair management: generate, distribute, zero (v0.2)
+ * 5. Timeout enforcement: SIGTERM -> grace period -> SIGKILL
+ * 6. Output provenance tagging: wraps all Gear output with source tag
  */
 export class GearHost {
   private readonly config: GearHostConfig;
@@ -126,13 +146,14 @@ export class GearHost {
    *
    * Full flow:
    * 1. Verify Gear integrity (SHA-256 checksum)
-   * 2. Create sandbox process
-   * 3. Inject secrets (if declared)
-   * 4. Send action request with HMAC signature
-   * 5. Wait for response (with timeout)
-   * 6. Verify response HMAC signature
-   * 7. Wrap output with provenance tag
-   * 8. Destroy sandbox
+   * 2. Resolve entry point
+   * 3. Retrieve secrets (if declared)
+   * 4. Generate ephemeral Ed25519 keypair (v0.2) or use HMAC (v0.1)
+   * 5. Create sandbox process
+   * 6. Send action request with signature
+   * 7. Wait for response (with timeout), verify signature
+   * 8. Wrap output with provenance tag
+   * 9. Destroy sandbox, zero ephemeral keys
    */
   async execute(
     manifest: GearManifest,
@@ -161,7 +182,17 @@ export class GearHost {
       }
     }
 
-    // 4. Create sandbox
+    // 4. Generate ephemeral keypair for Ed25519 (v0.2) or use HMAC
+    let ephemeralKeypair: Ed25519Keypair | undefined;
+    const gearComponentId: ComponentId = `gear:${gearId}`;
+
+    if (this.config.useEd25519) {
+      ephemeralKeypair = generateEphemeralKeypair();
+      // Register the public key so the signing service can verify responses
+      this.config.onEphemeralKeyRegistered?.(gearComponentId, ephemeralKeypair.publicKey);
+    }
+
+    // 5. Create sandbox
     const sandboxOptions: SandboxOptions = {
       entryPoint,
       manifest,
@@ -169,10 +200,15 @@ export class GearHost {
       workspacePath: this.config.workspacePath,
       secrets,
       logger,
+      ephemeralKeypair,
     };
 
     const sandboxResult = createSandbox(sandboxOptions);
     if (!sandboxResult.ok) {
+      if (ephemeralKeypair) {
+        zeroPrivateKey(ephemeralKeypair);
+        this.config.onEphemeralKeyRemoved?.(gearComponentId);
+      }
       return err(sandboxResult.error);
     }
 
@@ -180,7 +216,7 @@ export class GearHost {
     this.activeSandboxes.set(correlationId, handle);
 
     try {
-      // 5. Execute action
+      // 6. Execute action
       const timeout = manifest.resources?.timeoutMs ?? DEFAULT_GEAR_TIMEOUT_MS;
       const response = await this.sendAndWait(handle, {
         correlationId,
@@ -196,14 +232,14 @@ export class GearHost {
 
       const durationMs = Date.now() - startTime;
 
-      // 6. Check for Gear-level errors
+      // 7. Check for Gear-level errors
       if (response.value.error) {
         return err(
           `Gear '${gearId}' action '${action}' failed: [${response.value.error.code}] ${response.value.error.message}`,
         );
       }
 
-      // 7. Wrap output with provenance tag
+      // 8. Wrap output with provenance tag
       const result: GearExecutionResult = {
         result: {
           ...response.value.result,
@@ -227,9 +263,12 @@ export class GearHost {
 
       return ok(result);
     } finally {
-      // 8. Always destroy sandbox
+      // 9. Always destroy sandbox and clean up ephemeral keys
       this.activeSandboxes.delete(correlationId);
       await destroySandbox(handle, logger);
+      if (this.config.useEd25519) {
+        this.config.onEphemeralKeyRemoved?.(gearComponentId);
+      }
     }
   }
 
@@ -311,13 +350,25 @@ export class GearHost {
     }
 
     // Build and sign request
-    const requestPayload: Omit<SandboxRequest, 'hmac'> = {
-      correlationId,
-      action,
-      parameters,
-    };
-    const hmac = signMessage(requestPayload as Record<string, unknown>, handle.signingKey);
-    const request: SandboxRequest = { ...requestPayload, hmac };
+    let request: SandboxRequest;
+
+    if (handle.ephemeralKeypair) {
+      // v0.2: Ed25519 signing with ephemeral keypair
+      request = signSandboxRequest(
+        { correlationId, action, parameters },
+        handle.ephemeralKeypair.privateKey,
+        handle.manifest.id,
+      );
+    } else {
+      // v0.1 fallback: HMAC-SHA256 signing
+      const requestPayload: Omit<SandboxRequest, 'hmac'> = {
+        correlationId,
+        action,
+        parameters,
+      };
+      const hmac = signMessage(requestPayload as Record<string, unknown>, handle.signingKey);
+      request = { ...requestPayload, hmac };
+    }
 
     return new Promise<Result<SandboxResponse, string>>((resolve) => {
       let settled = false;
@@ -384,18 +435,27 @@ export class GearHost {
               continue;
             }
 
-            // Verify HMAC signature.
-            // v0.1: The sandbox runtime does not have the signing key, so it
-            // sends hmac: 'unsigned'. Accept this for v0.1 with a warning.
-            // v0.2 with Ed25519 per-component keys will enable bidirectional signing.
-            const { hmac: responseHmac, ...payload } = response;
-            if (responseHmac === 'unsigned') {
-              logger?.warn('Accepting unsigned response from sandbox (v0.1 limitation)', {
-                correlationId,
-              });
-            } else if (!verifySignature(payload as Record<string, unknown>, responseHmac, handle.signingKey)) {
-              settle(err('Response HMAC verification failed'));
-              return;
+            // Verify response signature
+            if (handle.ephemeralKeypair && response.hmac === 'ed25519' && response.envelope) {
+              // v0.2: Ed25519 signature verification
+              const valid = verifySandboxResponseSignature(response, handle.ephemeralKeypair.publicKey);
+              if (!valid) {
+                settle(err('Response Ed25519 signature verification failed'));
+                return;
+              }
+            } else {
+              // v0.1 fallback: HMAC-SHA256 verification
+              // The sandbox runtime does not have the signing key in v0.1, so it
+              // sends hmac: 'unsigned'. Accept this for v0.1 with a warning.
+              const { hmac: responseHmac, envelope: _envelope, ...payload } = response;
+              if (responseHmac === 'unsigned') {
+                logger?.warn('Accepting unsigned response from sandbox (v0.1 limitation)', {
+                  correlationId,
+                });
+              } else if (responseHmac !== 'ed25519' && !verifySignature(payload as Record<string, unknown>, responseHmac, handle.signingKey)) {
+                settle(err('Response HMAC verification failed'));
+                return;
+              }
             }
 
             settle(ok(response));

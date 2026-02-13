@@ -1,13 +1,21 @@
 // @meridian/axis — Message router with middleware chain
 // In-process typed function dispatch for inter-component communication.
 
-import type { AxisMessage, AuditEntry, ComponentId, RiskLevel } from '@meridian/shared';
+import type {
+  AxisMessage,
+  AuditEntry,
+  ComponentId,
+  RiskLevel,
+  SignedEnvelope,
+  SigningService,
+} from '@meridian/shared';
 import {
   generateId,
   MeridianError,
   NotFoundError,
   TimeoutError,
   ValidationError,
+  AuthenticationError,
   MAX_MESSAGE_SIZE_BYTES,
   MESSAGE_WARNING_THRESHOLD_BYTES,
 } from '@meridian/shared';
@@ -59,6 +67,8 @@ export interface MessageRouterOptions {
   registry: ComponentRegistryImpl;
   auditWriter?: AuditWriter;
   logger?: RouterLogger;
+  /** Signing service for Ed25519 signature verification (v0.2). */
+  signingService?: SigningService;
 }
 
 /**
@@ -223,6 +233,56 @@ function createSizeValidationMiddleware(logger?: RouterLogger): Middleware {
   };
 }
 
+/**
+ * Create signature verification middleware (v0.2, Section 6.3).
+ * Verifies Ed25519 signatures on all messages using the SigningService.
+ * Messages must carry a `_signedEnvelope` in their metadata.
+ */
+function createSignatureVerificationMiddleware(
+  signingService: SigningService,
+  logger?: RouterLogger,
+): Middleware {
+  return async (message, signal, next) => {
+    const envelope = message.metadata?.['_signedEnvelope'] as SignedEnvelope | undefined;
+
+    if (!envelope) {
+      // Messages without an envelope are rejected when signing is enabled
+      throw new AuthenticationError(
+        `Message from '${message.from}' is missing signature envelope`,
+      );
+    }
+
+    // Verify that the envelope signer matches the message sender
+    if (envelope.signer !== message.from) {
+      throw new AuthenticationError(
+        `Signature signer '${envelope.signer}' does not match message sender '${message.from}'`,
+      );
+    }
+
+    // Verify signature and replay protection
+    const result = signingService.verify(envelope);
+    if (!result.valid) {
+      logger?.warn('Signature verification failed', {
+        messageId: message.id,
+        from: message.from,
+        to: message.to,
+        reason: result.reason,
+      });
+      throw new AuthenticationError(
+        `Signature verification failed for message from '${message.from}': ${result.reason}`,
+      );
+    }
+
+    logger?.debug('Signature verified', {
+      messageId: message.id,
+      from: message.from,
+      signer: envelope.signer,
+    });
+
+    return next(message, signal);
+  };
+}
+
 // ---------------------------------------------------------------------------
 // MessageRouter
 // ---------------------------------------------------------------------------
@@ -255,6 +315,14 @@ export class MessageRouter {
     this.middlewares.push(createAuditMiddleware(auditWriter));
     this.middlewares.push(createLatencyMiddleware(logger));
     this.middlewares.push(createSizeValidationMiddleware(logger));
+
+    // Ed25519 signature verification (v0.2, Section 6.3).
+    // When a signing service is provided, all messages must be signed.
+    if (options.signingService) {
+      this.middlewares.push(
+        createSignatureVerificationMiddleware(options.signingService, logger),
+      );
+    }
   }
 
   /**

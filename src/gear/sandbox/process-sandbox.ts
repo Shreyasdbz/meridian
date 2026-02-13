@@ -18,13 +18,16 @@ import {
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
-import type { GearManifest, GearPermissions, GearResources, Result } from '@meridian/shared';
+import type { GearManifest, GearPermissions, GearResources, Result, Ed25519Keypair, ComponentId } from '@meridian/shared';
 import {
   ok,
   err,
   GEAR_KILL_TIMEOUT_MS,
   DEFAULT_GEAR_MEMORY_MB,
   DEFAULT_GEAR_TIMEOUT_MS,
+  signPayload,
+  verifyPayload,
+  zeroPrivateKey,
 } from '@meridian/shared';
 
 // ---------------------------------------------------------------------------
@@ -38,7 +41,16 @@ export interface SandboxRequest {
   correlationId: string;
   action: string;
   parameters: Record<string, unknown>;
+  /** HMAC-SHA256 signature (v0.1) or 'ed25519' marker when Ed25519 is used */
   hmac: string;
+  /** Ed25519 signed envelope (v0.2). Present when Ed25519 signing is enabled. */
+  envelope?: {
+    messageId: string;
+    timestamp: string;
+    signer: string;
+    payload: string;
+    signature: string;
+  };
 }
 
 /**
@@ -48,7 +60,16 @@ export interface SandboxResponse {
   correlationId: string;
   result?: Record<string, unknown>;
   error?: { code: string; message: string };
+  /** HMAC-SHA256 signature (v0.1) or 'ed25519' marker when Ed25519 is used */
   hmac: string;
+  /** Ed25519 signed envelope (v0.2). Present when Ed25519 signing is enabled. */
+  envelope?: {
+    messageId: string;
+    timestamp: string;
+    signer: string;
+    payload: string;
+    signature: string;
+  };
 }
 
 /**
@@ -76,7 +97,7 @@ export interface SandboxOptions {
   entryPoint: string;
   /** Gear manifest (permissions, resources, identity). */
   manifest: GearManifest;
-  /** HMAC signing key for message integrity. */
+  /** HMAC signing key for message integrity (v0.1 fallback). */
   signingKey: Buffer;
   /** Workspace directory (mounted read-only by default). */
   workspacePath: string;
@@ -84,6 +105,8 @@ export interface SandboxOptions {
   secrets?: Map<string, Buffer>;
   /** Optional logger. */
   logger?: SandboxLogger;
+  /** Ephemeral Ed25519 keypair for this execution (v0.2). */
+  ephemeralKeypair?: Ed25519Keypair;
 }
 
 /**
@@ -105,12 +128,14 @@ export interface SandboxHandle {
   secretsDir: string | null;
   /** Path to the temporary sandbox working directory. */
   sandboxDir: string;
-  /** HMAC signing key. */
+  /** HMAC signing key (v0.1 fallback). */
   signingKey: Buffer;
   /** The manifest for this Gear. */
   manifest: GearManifest;
   /** Whether the sandbox has been destroyed. */
   destroyed: boolean;
+  /** Ephemeral Ed25519 keypair for this execution (v0.2). */
+  ephemeralKeypair?: Ed25519Keypair;
 }
 
 // ---------------------------------------------------------------------------
@@ -151,6 +176,63 @@ export function verifySignature(
  */
 export function generateSigningKey(): Buffer {
   return randomBytes(32);
+}
+
+// ---------------------------------------------------------------------------
+// Ed25519 signing for sandbox messages (v0.2)
+// ---------------------------------------------------------------------------
+
+/**
+ * Sign a sandbox request using an Ed25519 private key.
+ * Returns a SandboxRequest with the envelope field populated.
+ */
+export function signSandboxRequest(
+  payload: Omit<SandboxRequest, 'hmac' | 'envelope'>,
+  privateKey: Buffer,
+  gearId: string,
+): SandboxRequest {
+  const signer: ComponentId = `gear:${gearId}`;
+  const envelope = signPayload(
+    payload as Record<string, unknown>,
+    privateKey,
+    signer,
+  );
+
+  return {
+    ...payload,
+    hmac: 'ed25519',
+    envelope: {
+      messageId: envelope.messageId,
+      timestamp: envelope.timestamp,
+      signer: envelope.signer,
+      payload: envelope.payload,
+      signature: envelope.signature,
+    },
+  };
+}
+
+/**
+ * Verify a sandbox response Ed25519 signature.
+ * Returns true if the signature is valid against the given public key.
+ */
+export function verifySandboxResponseSignature(
+  response: SandboxResponse,
+  publicKey: Buffer,
+): boolean {
+  if (!response.envelope) {
+    return false;
+  }
+
+  return verifyPayload(
+    {
+      messageId: response.envelope.messageId,
+      timestamp: response.envelope.timestamp,
+      signer: response.envelope.signer as ComponentId,
+      payload: response.envelope.payload,
+      signature: response.envelope.signature,
+    },
+    publicKey,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -515,6 +597,7 @@ export function createSandbox(options: SandboxOptions): Result<SandboxHandle, st
     signingKey,
     manifest,
     destroyed: false,
+    ephemeralKeypair: options.ephemeralKeypair,
   });
 }
 
@@ -555,6 +638,12 @@ export async function destroySandbox(
         resolve();
       });
     });
+  }
+
+  // Zero ephemeral keypair (v0.2)
+  if (handle.ephemeralKeypair) {
+    zeroPrivateKey(handle.ephemeralKeypair);
+    handle.ephemeralKeypair = undefined;
   }
 
   // Clean up secrets

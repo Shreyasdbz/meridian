@@ -14,6 +14,7 @@ import { join } from 'node:path';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 
 import type { GearManifest } from '@meridian/shared';
+import { generateEphemeralKeypair, zeroPrivateKey, signPayload as ed25519SignPayload } from '@meridian/shared';
 
 import {
   signMessage,
@@ -28,6 +29,8 @@ import {
   destroySandbox,
   isPathAllowed,
   isDomainAllowed,
+  signSandboxRequest,
+  verifySandboxResponseSignature,
 } from './process-sandbox.js';
 
 // ---------------------------------------------------------------------------
@@ -735,5 +738,157 @@ describe('isDomainAllowed', () => {
 
   it('should allow wildcard for non-private domains', () => {
     expect(isDomainAllowed('api.github.com', ['*'])).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Ed25519 sandbox signing (v0.2)
+// ---------------------------------------------------------------------------
+
+describe('Ed25519 sandbox signing', () => {
+  it('should sign a sandbox request with Ed25519', () => {
+    const keypair = generateEphemeralKeypair();
+    const request = signSandboxRequest(
+      { correlationId: 'corr-1', action: 'test', parameters: { foo: 'bar' } },
+      keypair.privateKey,
+      'test-gear',
+    );
+
+    expect(request.hmac).toBe('ed25519');
+    expect(request.envelope).toBeDefined();
+    expect(request.envelope?.signer).toBe('gear:test-gear');
+    expect(request.envelope?.signature).toBeTruthy();
+    expect(request.correlationId).toBe('corr-1');
+    expect(request.action).toBe('test');
+
+    zeroPrivateKey(keypair);
+  });
+
+  it('should verify a valid Ed25519 sandbox response', () => {
+    const keypair = generateEphemeralKeypair();
+
+    // Simulate a signed response from the sandbox
+    const payload = {
+      correlationId: 'corr-1',
+      result: { data: 'test' },
+    };
+    const envelope = ed25519SignPayload(payload, keypair.privateKey, 'gear:test-gear');
+
+    const response = {
+      ...payload,
+      hmac: 'ed25519' as const,
+      envelope: {
+        messageId: envelope.messageId,
+        timestamp: envelope.timestamp,
+        signer: envelope.signer,
+        payload: envelope.payload,
+        signature: envelope.signature,
+      },
+    };
+
+    expect(verifySandboxResponseSignature(response, keypair.publicKey)).toBe(true);
+
+    zeroPrivateKey(keypair);
+  });
+
+  it('should reject a response with no envelope', () => {
+    const keypair = generateEphemeralKeypair();
+    const response = {
+      correlationId: 'corr-1',
+      result: { data: 'test' },
+      hmac: 'ed25519' as const,
+    };
+
+    expect(verifySandboxResponseSignature(response, keypair.publicKey)).toBe(false);
+
+    zeroPrivateKey(keypair);
+  });
+
+  it('should reject a response with wrong public key', () => {
+    const keypair1 = generateEphemeralKeypair();
+    const keypair2 = generateEphemeralKeypair();
+
+    const payload = { correlationId: 'corr-1', result: {} };
+    const envelope = ed25519SignPayload(payload, keypair1.privateKey, 'gear:test-gear');
+
+    const response = {
+      ...payload,
+      hmac: 'ed25519' as const,
+      envelope: {
+        messageId: envelope.messageId,
+        timestamp: envelope.timestamp,
+        signer: envelope.signer,
+        payload: envelope.payload,
+        signature: envelope.signature,
+      },
+    };
+
+    // Verify with wrong public key
+    expect(verifySandboxResponseSignature(response, keypair2.publicKey)).toBe(false);
+
+    zeroPrivateKey(keypair1);
+    zeroPrivateKey(keypair2);
+  });
+
+  it('should include ephemeral keypair in sandbox handle', () => {
+    const gearDir = join(tempDir, 'gear-ed25519');
+    mkdirSync(gearDir, { recursive: true });
+    const entryPoint = join(gearDir, 'index.js');
+    writeFileSync(entryPoint, 'process.stdin.resume();');
+
+    const workspaceDir = join(tempDir, 'workspace-ed25519');
+    mkdirSync(workspaceDir, { recursive: true });
+
+    const ephemeralKeypair = generateEphemeralKeypair();
+
+    const result = createSandbox({
+      entryPoint,
+      manifest: createTestManifest(),
+      signingKey: generateSigningKey(),
+      workspacePath: workspaceDir,
+      logger: noopLogger,
+      ephemeralKeypair,
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.ephemeralKeypair).toBeDefined();
+      expect(result.value.ephemeralKeypair?.publicKey).toBeDefined();
+
+      // Clean up
+      result.value.process.kill('SIGKILL');
+    }
+  });
+
+  it('should zero ephemeral keypair on sandbox destruction', async () => {
+    const gearDir = join(tempDir, 'gear-ed25519-destroy');
+    mkdirSync(gearDir, { recursive: true });
+    const entryPoint = join(gearDir, 'index.js');
+    writeFileSync(entryPoint, 'process.stdin.resume(); setInterval(() => {}, 1000);');
+
+    const workspaceDir = join(tempDir, 'workspace-ed25519-destroy');
+    mkdirSync(workspaceDir, { recursive: true });
+
+    const ephemeralKeypair = generateEphemeralKeypair();
+    const privateKeyRef = ephemeralKeypair.privateKey;
+
+    const result = createSandbox({
+      entryPoint,
+      manifest: createTestManifest(),
+      signingKey: generateSigningKey(),
+      workspacePath: workspaceDir,
+      logger: noopLogger,
+      ephemeralKeypair,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    await destroySandbox(result.value, noopLogger);
+
+    // Private key should be zeroed
+    expect(privateKeyRef.every((b) => b === 0)).toBe(true);
+    // Ephemeral keypair should be cleared
+    expect(result.value.ephemeralKeypair).toBeUndefined();
   });
 });
