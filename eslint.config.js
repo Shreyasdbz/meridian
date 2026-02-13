@@ -223,7 +223,7 @@ export default tseslint.config(
 
   // Module boundary rules: bridge/
   {
-    files: ['src/bridge/**/*.ts'],
+    files: ['src/bridge/**/*.ts', 'src/bridge/**/*.tsx'],
     rules: {
       'no-restricted-imports': [
         'error',
@@ -234,9 +234,18 @@ export default tseslint.config(
     },
   },
 
+  // React/TSX specific rules
+  {
+    files: ['src/bridge/ui/**/*.tsx'],
+    rules: {
+      // Allow non-explicit return types in React components
+      '@typescript-eslint/explicit-function-return-type': 'off',
+    },
+  },
+
   // Test file overrides
   {
-    files: ['**/*.test.ts', 'tests/**/*.ts'],
+    files: ['**/*.test.ts', '**/*.test.tsx', 'tests/**/*.ts', 'tests/**/*.tsx'],
     rules: {
       '@typescript-eslint/explicit-function-return-type': 'off',
       '@typescript-eslint/no-unsafe-assignment': 'off',

@@ -82,6 +82,23 @@
 - 24 tests pass, no type errors, no lint errors
 - No console.log, no use of `any`, no Axis imports (Bridge stays in its boundary)
 
+### Phase 7.1 Frontend Foundation
+- Vite config with React plugin, path aliases (@meridian/shared, @meridian/bridge/ui), dev proxy to port 3000
+- Tailwind CSS with dark mode default (`class` strategy), custom meridian color palette (50-950 scale)
+- index.html sets dark mode on `<html>` element, meta color-scheme tag
+- 4 Zustand stores: ui-store (theme/view/sidebar state), auth-store (auth/csrf/loading), conversation-store (messages/streaming), job-store (active/pending/completed)
+- Theme system: dark/light/system with localStorage persistence, MediaQueryList listener for system changes
+- Layout component: responsive breakpoint at 1280px, side-by-side (>=1280px) vs toggle (<1280px), pending approval badge on MC toggle
+- WebSocket hook: one-time token flow (POST /api/ws/token → send as first WS message), exponential backoff reconnection (1s → 30s max), handles ping/pong, auto-reconnects on close
+- API client: CSRF token injection for state-changing requests (POST/PUT/DELETE/PATCH), credentials: 'same-origin', 401 triggers auth state update, 204 No Content handling
+- UI components: Button (4 variants, 3 sizes), Input (label/error support), Dialog (native HTML dialog with backdrop), Toast (auto-dismiss 5s, slide animation), Badge (5 variants), Spinner (3 sizes), Card (4 padding levels)
+- All components follow Tailwind dark mode patterns (dark: prefix), proper a11y attributes (aria-*, role, sr-only)
+- Import organization: Node builtins → external → @meridian/* → relative (enforced by ESLint)
+- No console.log usage (verified via grep)
+- No explicit return types on React TSX components (acceptable for Phase 7.1, hooks have return types)
+- All Zustand store actions have explicit return types (void)
+- TypeScript and ESLint pass with no errors
+
 ## Common Issues Found
 
 ### Architecture

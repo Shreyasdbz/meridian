@@ -1632,7 +1632,7 @@
 
 **Acceptance Criteria**:
 
-- `npm run dev` serves the SPA at localhost
+- `npm run dev:ui` serves the SPA at localhost (note: `dev` runs the backend; `dev:ui` runs the Vite frontend dev server, `build:ui` builds for production, `preview:ui` previews the production build)
 - Dark mode renders correctly
 - Responsive layout switches at breakpoint
 
