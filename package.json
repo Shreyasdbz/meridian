@@ -30,6 +30,7 @@
     "@types/bcrypt": "^6.0.0",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^25.2.3",
+    "@types/ws": "^8.18.1",
     "@typescript-eslint/eslint-plugin": "^8.0.0",
     "@typescript-eslint/parser": "^8.0.0",
     "dependency-cruiser": "^16.0.0",
@@ -47,6 +48,7 @@
     "@fastify/cookie": "^11.0.2",
     "@fastify/cors": "^11.2.0",
     "@fastify/rate-limit": "^10.3.0",
+    "@fastify/websocket": "^11.2.0",
     "@google/generative-ai": "^0.24.1",
     "ajv": "^8.17.1",
     "argon2": "^0.44.0",
@@ -56,6 +58,7 @@
     "fastify-plugin": "^5.1.0",
     "ollama": "^0.6.3",
     "openai": "^6.21.0",
-    "smol-toml": "^1.6.0"
+    "smol-toml": "^1.6.0",
+    "ws": "^8.19.0"
   }
 }

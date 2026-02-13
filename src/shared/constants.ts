@@ -101,6 +101,12 @@ export const WS_RATE_LIMIT_PER_MINUTE = 60;
 /** WebSocket session re-validation interval (15 minutes) */
 export const WS_REVALIDATION_INTERVAL_MS = 900_000;
 
+/** WebSocket connection token size in bytes */
+export const WS_CONNECTION_TOKEN_BYTES = 32;
+
+/** WebSocket connection token TTL (30 seconds) */
+export const WS_CONNECTION_TOKEN_TTL_MS = 30_000;
+
 // ---------------------------------------------------------------------------
 // API rate limiting
 // ---------------------------------------------------------------------------

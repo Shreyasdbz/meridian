@@ -1507,25 +1507,35 @@
 - All routes use Fastify schema validation (JSON Schema for request/response bodies)
 - All state-changing endpoints require CSRF token
 
+**Implementation Notes**:
+
+- `POST /api/messages` creates jobs directly via SQL INSERT in Phase 6.2. The "creates job via Axis" dispatch is wired in Phase 6.4 (Bridge ↔ Axis integration).
+- `POST /api/gear/install` validates the manifest schema server-side; the "displays permission manifest for user review" UX is handled in the frontend (Phase 7).
+- Memory routes use a v0.1 stub table in `meridian.db` (auto-created on first access). Wired to `journal.db` in Phase 10.1 as noted above.
+- Audit and secrets routes register conditionally — only when `AuditLog` / `SecretsVault` dependencies are provided to `createServer()`.
+
 **Test Deliverables**:
 
 - Route-level tests for each endpoint (happy path + error cases)
 - Schema validation tests (malformed input rejected)
 - Authentication required on all endpoints
+- 57 tests covering all 9 route modules: health, conversations, messages, jobs, gear, config, memories, audit, secrets, plus CSRF and auth enforcement
 
 ---
 
-### Phase 6.3: WebSocket Server
+### Phase 6.3: WebSocket Server ✅
+
+**Status**: Complete (2026-02-12)
 
 **PR Scope**: Real-time event streaming and authenticated WebSocket connections.
 
 **Deliverables** (`src/bridge/api/`):
 
 - `websocket.ts`:
-  - WebSocket endpoint at `/api/ws` using `ws` via Fastify plugin
+  - WebSocket endpoint at `/api/ws` using `@fastify/websocket` (wraps `ws`)
   - Authentication flow (Section 6.5.2):
-    1. Origin validation during HTTP upgrade
-    2. Session cookie validation during HTTP upgrade
+    1. Origin validation during HTTP upgrade (via CORS plugin)
+    2. Session cookie validation during HTTP upgrade (via auth middleware)
     3. One-time connection token as first message (consumed on use, no replay)
     4. Periodic re-validation every 15 minutes (close with `4001 Session Expired` if invalid)
   - Rate limiting: 60 messages per minute per connection
@@ -1542,15 +1552,29 @@
     - `connected` — Initial connection with session ID
     - `ping` / `pong` — Keepalive
   - Connection token endpoint: `POST /api/ws/token` (REST endpoint issuing one-time WS tokens)
+  - `WebSocketManager` interface: `broadcast()`, `broadcastToSession()`, `connectionCount()`, `close()`
+  - Connection limit enforcement (per deployment tier constants)
+  - `ws_connection_tokens` DB table (migration `005_ws_tokens.sql`)
+  - `WS_CONNECTION_TOKEN_BYTES` and `WS_CONNECTION_TOKEN_TTL_MS` constants added to shared
 
-**Test Deliverables**:
+**Implementation Notes**:
+- Used `@fastify/websocket` (official Fastify plugin) instead of raw `ws` for consistent plugin integration. The plugin wraps `ws` internally.
+- Origin validation delegates to the CORS plugin already configured on the server; session validation delegates to the existing auth middleware. This avoids duplicating logic.
+- Application-level ping/pong (JSON messages) rather than native WebSocket frames, for explicit timeout control and consistency with the WSMessage type system.
+- Custom close codes: `4001` (Session Expired), `4002` (Pong timeout), `4003` (Authentication failure), `4004` (Connection limit reached).
+
+**Test Deliverables** (26 tests):
 
 - `src/bridge/api/websocket.test.ts`:
-  - Authentication flow (all 5 steps)
-  - Message serialization/deserialization for each type
-  - Rate limiting enforcement
-  - Ping/pong timeout detection
-  - Re-validation of expired sessions
+  - Authentication flow (token endpoint, valid auth, invalid token, replay prevention, missing token)
+  - Message serialization/deserialization for each type (chunk, status, error, notification, progress, result, metadata)
+  - Broadcasting (all connections, specific session, non-matching session)
+  - Rate limiting enforcement (within limit, exceeding limit)
+  - Ping/pong protocol (client→server ping/pong, server-initiated pings)
+  - Session re-validation (session invalidation detection)
+  - Connection limits (enforcement, count tracking)
+  - Manager lifecycle (close all connections)
+  - Error handling (invalid JSON)
 
 ---
 

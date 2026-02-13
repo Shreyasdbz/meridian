@@ -5,14 +5,28 @@
 import cookie from '@fastify/cookie';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
+import websocket from '@fastify/websocket';
 import Fastify from 'fastify';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 
-import type { BridgeConfig, DatabaseClient, Logger } from '@meridian/shared';
+import type { BridgeConfig, DatabaseClient, Logger, SecretsVault } from '@meridian/shared';
 import { API_RATE_LIMIT_PER_MINUTE, redact } from '@meridian/shared';
 
 import { AuthService, authRoutes } from './auth.js';
 import { authMiddleware, csrfMiddleware } from './middleware.js';
+import {
+  type AuditLogReader,
+  healthRoutes,
+  conversationRoutes,
+  messageRoutes,
+  jobRoutes,
+  gearRoutes,
+  configRoutes,
+  memoryRoutes,
+  auditRoutes,
+  secretRoutes,
+} from './routes/index.js';
+import { type WebSocketManager, websocketRoutes } from './websocket.js';
 
 // ---------------------------------------------------------------------------
 // Security headers (Section 6.5.1)
@@ -111,6 +125,16 @@ export interface CreateServerOptions {
   rateLimitMax?: number;
   /** Disable rate limiting entirely (for tests). */
   disableRateLimit?: boolean;
+  /** Audit log instance for audit routes. */
+  auditLog?: AuditLogReader;
+  /** Secrets vault instance for secrets routes. */
+  vault?: SecretsVault;
+  /** Callback to check if the server has completed full startup. */
+  isReady?: () => boolean;
+  /** Callback to get component health status. */
+  getComponentStatus?: () => Record<string, { status: string; latencyMs?: number }>;
+  /** Override max WebSocket connections (defaults to MAX_WS_CONNECTIONS_DESKTOP). */
+  maxWsConnections?: number;
 }
 
 /**
@@ -120,8 +144,9 @@ export interface CreateServerOptions {
 export async function createServer(options: CreateServerOptions): Promise<{
   server: FastifyInstance;
   authService: AuthService;
+  wsManager: WebSocketManager;
 }> {
-  const { config, db, logger, rateLimitMax, disableRateLimit } = options;
+  const { config, db, logger, rateLimitMax, disableRateLimit, auditLog, vault, isReady, getComponentStatus, maxWsConnections } = options;
 
   const server = Fastify({
     logger: false, // We use our own logger
@@ -130,6 +155,9 @@ export async function createServer(options: CreateServerOptions): Promise<{
 
   // ----- Cookie plugin (for session cookies) -----
   await server.register(cookie);
+
+  // ----- WebSocket plugin (Section 6.5.2) -----
+  await server.register(websocket);
 
   // ----- CORS (Section 6.5.1) — exact origin only, no wildcard -----
   await server.register(cors, {
@@ -211,6 +239,37 @@ export async function createServer(options: CreateServerOptions): Promise<{
   // ----- Auth routes -----
   authRoutes(server, authService);
 
+  // ----- REST API routes (Phase 6.2) -----
+  healthRoutes(server, {
+    db,
+    logger,
+    isReady: isReady ?? (() => true),
+    getComponentStatus,
+  });
+
+  conversationRoutes(server, { db, logger });
+  messageRoutes(server, { db, logger });
+  jobRoutes(server, { db, logger, authService });
+  gearRoutes(server, { db, logger });
+  configRoutes(server, { db, logger });
+  memoryRoutes(server, { db, logger });
+
+  if (auditLog) {
+    auditRoutes(server, { auditLog, logger });
+  }
+
+  if (vault) {
+    secretRoutes(server, { vault, logger });
+  }
+
+  // ----- WebSocket routes (Phase 6.3) -----
+  const wsManager = websocketRoutes(server, {
+    db,
+    logger,
+    authService,
+    maxConnections: maxWsConnections,
+  });
+
   // ----- Error handler -----
   server.setErrorHandler(
     async (error: Error, _request: FastifyRequest, reply: FastifyReply) => {
@@ -256,5 +315,5 @@ export async function createServer(options: CreateServerOptions): Promise<{
     },
   );
 
-  return { server, authService };
+  return { server, authService, wsManager };
 }

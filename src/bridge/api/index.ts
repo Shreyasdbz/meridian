@@ -12,3 +12,33 @@ export type { AuthServiceOptions } from './auth.js';
 // Middleware
 export { authMiddleware, csrfMiddleware } from './middleware.js';
 export type { AuthMiddlewareOptions, CsrfMiddlewareOptions } from './middleware.js';
+
+// WebSocket
+export { websocketRoutes } from './websocket.js';
+export type { WebSocketOptions, WebSocketManager } from './websocket.js';
+
+// Routes
+export {
+  healthRoutes,
+  conversationRoutes,
+  messageRoutes,
+  jobRoutes,
+  gearRoutes,
+  configRoutes,
+  memoryRoutes,
+  auditRoutes,
+  secretRoutes,
+} from './routes/index.js';
+export type {
+  HealthRouteOptions,
+  ConversationRouteOptions,
+  MessageRouteOptions,
+  JobRouteOptions,
+  GearRouteOptions,
+  ConfigRouteOptions,
+  MemoryRouteOptions,
+  AuditRouteOptions,
+  AuditLogReader,
+  QueryAuditOptions,
+  SecretRouteOptions,
+} from './routes/index.js';

@@ -61,6 +61,27 @@
 - All exported functions have explicit return types (verified)
 - TypeScript compilation passes with no errors
 
+### Phase 6.3 WebSocket Server
+- WebSocket endpoint at `/api/ws` using `@fastify/websocket` plugin
+- Three-step authentication: session cookie → one-time connection token → periodic re-validation (15min)
+- Connection token flow: client calls POST /api/ws/token → server returns one-time token → client sends as first WS message → token consumed (replay-safe)
+- Tokens stored in `ws_connection_tokens` table with SHA-256 hash, 30s TTL, foreign key to sessions
+- Connection limit enforced (10 desktop, 4 Pi, configurable)
+- Rate limiting: 60 messages/min per connection, sliding window
+- Ping/pong heartbeat: 30s ping interval, 10s pong timeout, disconnect after 2 missed pongs
+- Application-level ping/pong (not native WebSocket frames) for explicit timeout control
+- Message types: chunk, status, approval_required, result, error, notification, progress, connected, ping, pong
+- All message types follow typed-with-metadata pattern (required fields + optional metadata)
+- WebSocketManager API: broadcast(), broadcastToSession(), connectionCount(), close()
+- Connection tracking: authenticated flag, missed pong counter, rate limit window, three timers (ping, pong, revalidation)
+- All timers properly cleaned up in removeConnection() helper
+- tokenTimeout cleared in all exit paths (success, failure, close, error)
+- Session re-validation uses AuthService.validateSession() every 15 minutes, closes on expiry
+- Invalid JSON after auth returns error message but keeps connection alive
+- Tests cover: token issuance, auth flow, token replay prevention, all message types, broadcasting, ping/pong, rate limiting, connection limits, manager close, error handling
+- 24 tests pass, no type errors, no lint errors
+- No console.log, no use of `any`, no Axis imports (Bridge stays in its boundary)
+
 ## Common Issues Found
 
 ### Architecture
@@ -96,6 +117,9 @@
 - `/Users/shreyas/Development/Projects/meridian/src/gear/sandbox/gear-host.ts` - Host-side Gear execution (Phase 5.2)
 - `/Users/shreyas/Development/Projects/meridian/src/gear/sandbox/process-sandbox.test.ts` - Sandbox unit tests (53 tests)
 - `/Users/shreyas/Development/Projects/meridian/tests/security/sandbox-escape.test.ts` - Sandbox security tests (39 tests)
+- `/Users/shreyas/Development/Projects/meridian/src/bridge/api/websocket.ts` - WebSocket server (Phase 6.3)
+- `/Users/shreyas/Development/Projects/meridian/src/bridge/api/websocket.test.ts` - WebSocket tests (24 tests)
+- `/Users/shreyas/Development/Projects/meridian/src/axis/migrations/005_ws_tokens.sql` - Connection token table migration
 
 ## Testing Patterns
 - Integration tests use temporary directories with random names
