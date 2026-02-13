@@ -1357,8 +1357,8 @@
 **Deliverables**:
 
 - `src/gear/index.ts` — Public API:
-  - `createGearRuntime(config): GearRuntime`
-  - Registers as message handler with Axis for `execute.request` messages
+  - `createGearRuntime(config, deps): Promise<GearRuntime>` (async — registers built-ins and loads cache from DB)
+  - Registers as message handler with Axis under `gear:runtime` ComponentId for `execute.request` messages
   - Handles `execute.request`:
     1. Look up Gear in registry
     2. Verify integrity (checksum)
@@ -1368,7 +1368,11 @@
     6. Collect results
     7. Destroy sandbox
     8. Return `execute.response`
+  - Exposes `GearRegistry` as `GearLookup` for plan-validator (wiring per Phase 2.4 dependency note)
+  - `loadBuiltinManifests()` helper reads manifests from `src/gear/builtin/*/manifest.json`
 - Auto-registration of built-in Gear during startup
+
+> **Implementation Note**: `createGearRuntime` is async (returns `Promise<GearRuntime>`) because built-in Gear registration and cache loading require database access. The function accepts `GearRuntimeDeps` with the Axis `ComponentRegistry` to match the pattern used by `createSentinel`. The handler registers under `gear:runtime` as a single dispatch point — individual Gear IDs appear in the execute.request payload and in the response `from` field.
 
 **Test Deliverables**:
 

@@ -42,7 +42,7 @@
             "description": "Standard error (truncated preview if exceeding maxOutputBytes)"
           },
           "exitCode": {
-            "type": "number",
+            "type": ["number", "null"],
             "description": "Process exit code (null if killed by signal)"
           },
           "signal": {

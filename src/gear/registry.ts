@@ -172,6 +172,9 @@ export class GearRegistry {
    * Install a Gear from a pre-validated manifest without computing checksum
    * from a file. Used for built-in Gear auto-registration where the checksum
    * is already set in the manifest.
+   *
+   * Shell Gear (permissions.shell === true) is registered as disabled by
+   * default per Section 5.6.5 — the user must explicitly enable it.
    */
   async installBuiltin(manifest: GearManifest): Promise<void> {
     // Validate manifest structure
@@ -182,6 +185,10 @@ export class GearRegistry {
       );
     }
     const validatedManifest = validationResult.value;
+
+    // Shell Gear is disabled by default (Section 5.6.5): shell commands are
+    // inherently opaque and must be explicitly enabled by the user.
+    const enabled = validatedManifest.permissions.shell === true ? 0 : 1;
 
     const now = new Date().toISOString();
 
@@ -197,19 +204,23 @@ export class GearRegistry {
         'builtin',
         0,
         now,
-        1,
+        enabled,
         null,
         validatedManifest.signature ?? null,
         validatedManifest.checksum,
       ],
     );
 
-    // Update cache
-    this.manifestCache.set(validatedManifest.id, validatedManifest);
+    // Only cache enabled Gear — disabled Gear should not be available
+    // for plan validation until explicitly enabled by the user.
+    if (enabled === 1) {
+      this.manifestCache.set(validatedManifest.id, validatedManifest);
+    }
 
     this.logger.info('Built-in Gear registered', {
       gearId: validatedManifest.id,
       version: validatedManifest.version,
+      enabled: enabled === 1,
     });
   }
 

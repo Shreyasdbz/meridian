@@ -417,6 +417,82 @@ describe('GearRegistry', () => {
       expect(registry.getManifest('file-manager')).toBeDefined();
       expect(registry.getManifest('file-manager')?.name).toBe('File Manager');
     });
+
+    it('should register shell Gear as disabled by default (Section 5.6.5)', async () => {
+      const shellManifest = createValidManifest({
+        id: 'shell',
+        name: 'Shell',
+        origin: 'builtin',
+        permissions: { shell: true, filesystem: { write: ['shell-output/**'] } },
+        actions: [
+          {
+            name: 'execute',
+            description: 'Run a shell command',
+            parameters: { type: 'object', properties: {}, required: [] },
+            returns: { type: 'object', properties: {} },
+            riskLevel: 'critical',
+          },
+        ],
+      });
+
+      await registry.installBuiltin(shellManifest);
+
+      const isEnabled = await registry.isEnabled('shell');
+      expect(isEnabled).toBe(false);
+    });
+
+    it('should not cache shell Gear when registered (disabled by default)', async () => {
+      const shellManifest = createValidManifest({
+        id: 'shell',
+        name: 'Shell',
+        origin: 'builtin',
+        permissions: { shell: true, filesystem: { write: ['shell-output/**'] } },
+        actions: [
+          {
+            name: 'execute',
+            description: 'Run a shell command',
+            parameters: { type: 'object', properties: {}, required: [] },
+            returns: { type: 'object', properties: {} },
+            riskLevel: 'critical',
+          },
+        ],
+      });
+
+      await registry.installBuiltin(shellManifest);
+
+      // Shell Gear should NOT be in cache (disabled = not available for plans)
+      expect(registry.getManifest('shell')).toBeUndefined();
+    });
+
+    it('should cache shell Gear after explicit enable', async () => {
+      const shellManifest = createValidManifest({
+        id: 'shell',
+        name: 'Shell',
+        origin: 'builtin',
+        permissions: { shell: true, filesystem: { write: ['shell-output/**'] } },
+        actions: [
+          {
+            name: 'execute',
+            description: 'Run a shell command',
+            parameters: { type: 'object', properties: {}, required: [] },
+            returns: { type: 'object', properties: {} },
+            riskLevel: 'critical',
+          },
+        ],
+      });
+
+      await registry.installBuiltin(shellManifest);
+
+      // Not in cache yet
+      expect(registry.getManifest('shell')).toBeUndefined();
+
+      // Explicitly enable
+      await registry.enable('shell');
+
+      // Now it should be in cache
+      expect(registry.getManifest('shell')).toBeDefined();
+      expect(registry.getManifest('shell')?.id).toBe('shell');
+    });
   });
 
   // ---------------------------------------------------------------------------
