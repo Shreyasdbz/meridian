@@ -1,9 +1,10 @@
 // @meridian/sentinel — public API
 
-// Sentinel component (Phase 4.3)
+// Sentinel component (Phase 4.3, updated Phase 9.1)
 export { Sentinel, createSentinel } from './sentinel.js';
 export type {
   SentinelConfig,
+  SentinelLLMConfig,
   SentinelDependencies,
   SentinelLogger,
 } from './sentinel.js';
@@ -34,3 +35,22 @@ export type {
   UserApprovalOutcome,
 } from './approval.js';
 export { routeVerdict, processUserApproval } from './approval.js';
+
+// Plan stripper (Phase 9.1)
+export type { StrippedExecutionPlan, StrippedExecutionStep } from './plan-stripper.js';
+export { stripPlan, stripStep } from './plan-stripper.js';
+
+// LLM validator (Phase 9.1)
+export type {
+  LLMValidatorConfig,
+  LLMValidatorLogger,
+  LLMValidationResponse,
+  SameProviderWarning,
+} from './llm-validator.js';
+export {
+  validatePlanWithLLM,
+  buildSystemPrompt,
+  buildValidationMessage,
+  parseValidationResponse,
+  checkSameProvider,
+} from './llm-validator.js';

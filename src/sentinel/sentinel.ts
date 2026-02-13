@@ -1,8 +1,13 @@
-// @meridian/sentinel — Sentinel component class (Phase 4.3)
+// @meridian/sentinel — Sentinel component class (Phase 4.3, updated Phase 9.1)
 //
-// Wires the rule-based policy engine to the Axis message router so that
-// validate.request messages are handled and validate.response messages
-// are returned.
+// Wires the policy engine (rule-based and/or LLM-based) to the Axis message
+// router so that validate.request messages are handled and validate.response
+// messages are returned.
+//
+// In v0.1, Sentinel is purely rule-based. In v0.2 (Phase 9.1), an LLM-based
+// validator is added as the primary validation path, with the rule-based engine
+// as a fallback. When an LLM provider is configured, plans are first stripped
+// (plan-stripper) then sent to the LLM for evaluation.
 //
 // INFORMATION BARRIER: Sentinel MUST NOT receive or inspect user messages,
 // Journal data, or Gear catalog. It only sees the structured ExecutionPlan
@@ -12,7 +17,9 @@
 // Architecture references:
 // - Section 5.1.14 (Startup Sequence — Component Registration)
 // - Section 5.3 (Sentinel — Safety Validator)
+// - Section 5.3.2 (Validation Categories, Plan Stripping)
 // - Section 5.3.5 (Risk Policies)
+// - Section 5.3.6 (Sentinel Configuration)
 // - Section 9.1 (AxisMessage schema)
 
 import type {
@@ -20,13 +27,17 @@ import type {
   ComponentId,
   ComponentRegistry,
   ExecutionPlan,
+  LLMProvider,
   Logger,
   ValidationResult,
 } from '@meridian/shared';
 import { generateId, ValidationError } from '@meridian/shared';
 
+import type { LLMValidatorConfig } from './llm-validator.js';
+import { checkSameProvider, validatePlanWithLLM } from './llm-validator.js';
 import type { PolicyEngineConfig } from './policy-engine.js';
 import { evaluatePlan } from './policy-engine.js';
+import { checkRiskDivergence } from './risk-assessor.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -47,12 +58,37 @@ export interface SentinelLogger {
  *
  * In v0.1, Sentinel is rule-based (no LLM). The policy engine config
  * controls workspace paths, allowlisted domains, and user policy overrides.
+ *
+ * In v0.2, an LLM-based validator can be configured via `llmConfig`.
+ * When present, LLM validation is used as the primary path, with rule-based
+ * evaluation as fallback if the LLM call fails.
  */
 export interface SentinelConfig {
   /** Policy engine configuration for rule-based validation. */
   policyConfig: PolicyEngineConfig;
+  /** LLM configuration for v0.2+ LLM-based validation. Optional. */
+  llmConfig?: SentinelLLMConfig;
+  /**
+   * Scout's LLM provider ID. Used for same-provider warning (Section 5.3.6).
+   * When both Scout and Sentinel use the same provider, a warning is logged.
+   */
+  scoutProviderId?: string;
   /** Logger for Sentinel events. */
   logger?: SentinelLogger;
+}
+
+/**
+ * LLM configuration for Sentinel's LLM-based validator.
+ */
+export interface SentinelLLMConfig {
+  /** LLM provider instance for Sentinel. */
+  provider: LLMProvider;
+  /** Model to use for validation. */
+  model: string;
+  /** Temperature for validation calls. Default: 0.1. */
+  temperature?: number;
+  /** Maximum tokens for validation response. Default: 4096. */
+  maxTokens?: number;
 }
 
 /**
@@ -102,8 +138,12 @@ const BARRIER_VIOLATION_KEYS: ReadonlySet<string> = new Set([
  * Sentinel — the safety validation component of Meridian.
  *
  * Registers with Axis as a message handler for `validate.request` messages.
- * Evaluates execution plans against the rule-based policy engine and
- * returns a `validate.response` containing the ValidationResult.
+ * Evaluates execution plans using:
+ * - LLM-based validation (v0.2+, when llmConfig is provided)
+ * - Rule-based policy engine (v0.1, or as fallback when LLM fails)
+ *
+ * The LLM validator uses plan stripping (Section 5.3.2/5.3.7) to prevent
+ * compromised Scout from embedding persuasive content in optional fields.
  *
  * INFORMATION BARRIER:
  * Sentinel enforces a strict information barrier. It:
@@ -120,19 +160,40 @@ const BARRIER_VIOLATION_KEYS: ReadonlySet<string> = new Set([
  */
 export class Sentinel {
   private readonly policyConfig: PolicyEngineConfig;
+  private readonly llmConfig: SentinelLLMConfig | undefined;
   private readonly registry: ComponentRegistry;
   private readonly logger: SentinelLogger;
+  private readonly useLLM: boolean;
   private disposed = false;
 
   constructor(config: SentinelConfig, deps: SentinelDependencies) {
     this.policyConfig = config.policyConfig;
+    this.llmConfig = config.llmConfig;
     this.registry = deps.registry;
     this.logger = config.logger ?? noopLogger;
+    this.useLLM = !!config.llmConfig;
 
     // Register with Axis's component registry
     this.registry.register('sentinel', this.handleMessage.bind(this));
 
+    // Check same-provider warning (Section 5.3.6)
+    if (config.llmConfig && config.scoutProviderId) {
+      const warning = checkSameProvider(
+        config.scoutProviderId,
+        config.llmConfig.provider.id,
+      );
+      if (warning) {
+        this.logger.warn(warning.message, {
+          scoutProvider: warning.scoutProvider,
+          sentinelProvider: warning.sentinelProvider,
+        });
+      }
+    }
+
     this.logger.info('Sentinel registered with Axis', {
+      mode: this.useLLM ? 'llm' : 'rule-based',
+      model: this.llmConfig?.model,
+      providerId: this.llmConfig?.provider.id,
       workspacePath: this.policyConfig.workspacePath,
       allowlistedDomains: this.policyConfig.allowlistedDomains,
       userPolicies: this.policyConfig.userPolicies?.length ?? 0,
@@ -149,10 +210,13 @@ export class Sentinel {
    * 1. Rejecting non-validate.request message types
    * 2. Checking for and warning about barrier-violating payload keys
    * 3. Extracting ONLY the execution plan from the payload
+   *
+   * When LLM is configured, the plan is stripped and sent to the LLM.
+   * If LLM validation fails, falls back to rule-based evaluation.
    */
-  private handleMessage(
+  private async handleMessage(
     message: AxisMessage,
-    _signal: AbortSignal,
+    signal: AbortSignal,
   ): Promise<AxisMessage> {
     if (message.type !== 'validate.request') {
       throw new ValidationError(
@@ -181,22 +245,23 @@ export class Sentinel {
       jobId: message.jobId,
       planId: plan.id,
       stepCount: plan.steps.length,
+      mode: this.useLLM ? 'llm' : 'rule-based',
     });
 
-    // Evaluate the plan against policies
-    // Note: In v0.1, Sentinel uses a synchronous rule-based engine.
-    // In v0.2, this will become async when the LLM-based validator is added.
-    const validation = evaluatePlan(
-      plan,
-      this.policyConfig,
-      this.logger as Logger,
-    );
+    // Choose validation path
+    let validation: ValidationResult;
+    if (this.useLLM && this.llmConfig) {
+      validation = await this.validateWithLLM(plan, signal);
+    } else {
+      validation = this.validateWithRules(plan);
+    }
 
     this.logger.info('Plan validation complete', {
       planId: plan.id,
       verdict: validation.verdict,
       overallRisk: validation.overallRisk,
       stepCount: plan.steps.length,
+      mode: this.useLLM ? 'llm' : 'rule-based',
       approvedSteps: validation.stepResults.filter(
         (s) => s.verdict === 'approved',
       ).length,
@@ -209,7 +274,96 @@ export class Sentinel {
     });
 
     // Build and return validate.response
-    return Promise.resolve(this.buildResponse(message, validation));
+    return this.buildResponse(message, validation);
+  }
+
+  /**
+   * Validate using the LLM-based validator with rule-based fallback.
+   *
+   * If the LLM call fails, logs the error and falls back to rule-based
+   * evaluation to maintain availability.
+   */
+  private async validateWithLLM(
+    plan: ExecutionPlan,
+    signal: AbortSignal,
+  ): Promise<ValidationResult> {
+    const llm = this.llmConfig;
+    if (!llm) {
+      return this.validateWithRules(plan);
+    }
+
+    try {
+      const llmValidatorConfig: LLMValidatorConfig = {
+        provider: llm.provider,
+        model: llm.model,
+        temperature: llm.temperature,
+        maxTokens: llm.maxTokens,
+        logger: this.logger,
+      };
+
+      const result = await validatePlanWithLLM(plan, llmValidatorConfig, signal);
+
+      // Check risk divergence between Scout's declared risk and LLM's assessment
+      // Per Section 5.3.2: divergence > 1 level is logged as an anomaly
+      this.logRiskDivergence(plan, result);
+
+      return result;
+    } catch (error) {
+      this.logger.warn('LLM validation failed, falling back to rule-based evaluation', {
+        planId: plan.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+
+      // Fallback to rule-based
+      const ruleResult = this.validateWithRules(plan);
+      // Mark that this was a fallback result
+      ruleResult.metadata = {
+        ...ruleResult.metadata,
+        llmFallback: true,
+        llmError: error instanceof Error ? error.message : String(error),
+      };
+      return ruleResult;
+    }
+  }
+
+  /**
+   * Log risk divergence between Scout's declared risk levels and Sentinel
+   * LLM's independent assessment. Per Section 5.3.2, divergence of more
+   * than one level is logged as an anomaly for audit review.
+   */
+  private logRiskDivergence(
+    plan: ExecutionPlan,
+    result: ValidationResult,
+  ): void {
+    for (const stepResult of result.stepResults) {
+      const planStep = plan.steps.find((s) => s.id === stepResult.stepId);
+      if (!planStep || !stepResult.riskLevel) {
+        continue;
+      }
+
+      const divergence = checkRiskDivergence(
+        stepResult.stepId,
+        planStep.riskLevel,
+        stepResult.riskLevel,
+      );
+
+      if (divergence) {
+        this.logger.warn('Risk divergence detected between Scout and Sentinel LLM', {
+          planId: plan.id,
+          stepId: divergence.stepId,
+          scoutRisk: divergence.scoutRisk,
+          sentinelRisk: divergence.sentinelRisk,
+          difference: divergence.difference,
+        });
+      }
+    }
+  }
+
+  /**
+   * Validate using the rule-based policy engine.
+   */
+  private validateWithRules(plan: ExecutionPlan): ValidationResult {
+    return evaluatePlan(plan, this.policyConfig, this.logger as Logger);
   }
 
   /**
@@ -270,6 +424,20 @@ export class Sentinel {
   }
 
   /**
+   * Check if LLM-based validation is enabled.
+   */
+  isLLMEnabled(): boolean {
+    return this.useLLM;
+  }
+
+  /**
+   * Get the LLM model being used (if LLM is enabled).
+   */
+  getLLMModel(): string | undefined {
+    return this.llmConfig?.model;
+  }
+
+  /**
    * Unregister Sentinel from Axis.
    * Call during shutdown to clean up.
    */
@@ -294,6 +462,7 @@ export class Sentinel {
  *
  * @example
  * ```ts
+ * // v0.1 — Rule-based only
  * const sentinel = createSentinel(
  *   {
  *     policyConfig: {
@@ -304,7 +473,21 @@ export class Sentinel {
  *   { registry: axis.internals.registry },
  * );
  *
- * // Sentinel is now handling validate.request messages via Axis
+ * // v0.2 — LLM-based with rule-based fallback
+ * const sentinel = createSentinel(
+ *   {
+ *     policyConfig: {
+ *       workspacePath: '/data/workspace',
+ *       allowlistedDomains: ['api.example.com'],
+ *     },
+ *     llmConfig: {
+ *       provider: openaiProvider,
+ *       model: 'gpt-4o',
+ *     },
+ *     scoutProviderId: 'anthropic', // triggers same-provider warning if match
+ *   },
+ *   { registry: axis.internals.registry },
+ * );
  *
  * // During shutdown:
  * sentinel.dispose();
