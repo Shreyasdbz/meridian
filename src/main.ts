@@ -372,13 +372,18 @@ export function createPipelineProcessor(options: PipelineProcessorOptions): JobP
 }
 
 /**
- * Execute all steps in an approved plan via the Gear runtime.
+ * Execute all plan steps via the Gear runtime.
+ * The job must already be in 'executing' state.
+ *
+ * Separated from the state transition so it can be used both:
+ * 1. In the normal pipeline flow (after Sentinel approves)
+ * 2. After user approval (post-approval execution)
  */
-async function executePlan(
+async function executeJobSteps(
   jobId: string,
   correlationId: string,
   plan: ExecutionPlan,
-  validation: ValidationResult,
+  journalSkip: boolean,
   signal: AbortSignal,
   router: Axis['internals']['router'],
   jobQueue: Axis['internals']['jobQueue'],
@@ -387,8 +392,6 @@ async function executePlan(
   bridge: BridgeServer | undefined,
   conversationId: string | undefined,
 ): Promise<void> {
-  await jobQueue.transition(jobId, 'validating', 'executing', { validation });
-
   const stepResults: Array<{
     stepId: string;
     result?: unknown;
@@ -514,7 +517,105 @@ async function executePlan(
   });
 
   // Step 11: Reflection — stubbed for v0.1
-  // Journal only stores conversation history (already done above via messages table)
+  // In v0.1, Journal only stores conversation history (already done above via messages table).
+  // When journalSkip is false, a reflection would be triggered (future: dispatch reflect.request to Journal).
+  if (!journalSkip) {
+    logger.info('Reflection stub: journalSkip is false, reflection would be triggered', { jobId });
+  }
+}
+
+/**
+ * Transition from validating to executing, then run plan steps via Gear.
+ * Used in the normal pipeline flow when Sentinel approves directly.
+ */
+async function executePlan(
+  jobId: string,
+  correlationId: string,
+  plan: ExecutionPlan,
+  validation: ValidationResult,
+  signal: AbortSignal,
+  router: Axis['internals']['router'],
+  jobQueue: Axis['internals']['jobQueue'],
+  db: DatabaseClient,
+  logger: Logger,
+  bridge: BridgeServer | undefined,
+  conversationId: string | undefined,
+): Promise<void> {
+  await jobQueue.transition(jobId, 'validating', 'executing', { validation });
+  await executeJobSteps(
+    jobId, correlationId, plan, !!plan.journalSkip,
+    signal, router, jobQueue, db, logger, bridge, conversationId,
+  );
+}
+
+/**
+ * Create a handler for post-approval job execution.
+ *
+ * When a job transitions from 'awaiting_approval' to 'executing' (after user
+ * approval via Bridge API), the original pipeline processor has already returned
+ * and the worker is released. This handler picks up the approved job and runs
+ * the Gear execution steps.
+ *
+ * Wire this into jobQueue.onStatusChange() so approved jobs resume execution.
+ */
+export function createPostApprovalHandler(options: PipelineProcessorOptions): (
+  jobId: string,
+  from: string,
+  to: string,
+  job: Job,
+) => void {
+  const { axis, logger, db } = options;
+  const router = axis.internals.router;
+  const jobQueue = axis.internals.jobQueue;
+
+  return (jobId: string, from: string, to: string, job: Job): void => {
+    if (from !== 'awaiting_approval' || to !== 'executing') {
+      return;
+    }
+
+    if (!job.plan || !Array.isArray(job.plan.steps) || job.plan.steps.length === 0) {
+      logger.error('Post-approval execution: job has no valid plan', { jobId });
+      void jobQueue.transition(jobId, 'executing', 'failed', {
+        error: {
+          code: 'INVALID_PLAN',
+          message: 'Approved job has no valid execution plan',
+          retriable: false,
+        },
+      });
+      return;
+    }
+
+    const plan = job.plan;
+    const abortController = new AbortController();
+
+    logger.info('Resuming execution for approved job', { jobId });
+
+    void executeJobSteps(
+      jobId,
+      jobId, // correlationId
+      plan,
+      !!plan.journalSkip,
+      abortController.signal,
+      router,
+      jobQueue,
+      db,
+      logger,
+      options.bridge,
+      job.conversationId,
+    ).catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error('Post-approval execution failed', { jobId, error: message });
+      void jobQueue.transition(jobId, 'executing', 'failed', {
+        error: {
+          code: 'POST_APPROVAL_FAILED',
+          message: `Post-approval execution failed: ${message}`,
+          retriable: true,
+        },
+      }).catch(() => {
+        logger.error('Failed to transition approved job to failed state', { jobId });
+      });
+    });
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -695,6 +796,16 @@ export async function startMeridian(options?: {
 
   await bridge.start();
   bridgeRef.current = bridge;
+
+  // Register post-approval handler — resumes Gear execution for user-approved jobs.
+  // Must be registered after Bridge is created so WebSocket broadcasts work.
+  const postApprovalHandler = createPostApprovalHandler({
+    axis,
+    logger,
+    db,
+    bridge,
+  });
+  axis.internals.jobQueue.onStatusChange(postApprovalHandler);
 
   logger.info('Meridian ready', {
     bind: config.bridge.bind,

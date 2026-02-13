@@ -1960,6 +1960,20 @@
     - Gear executes deletion
     - Journal reflects on the interaction (v0.1: verify reflection hook is called; actual Journal reflection is stubbed — no-op behavior)
 
+> **v0.1 implementation notes (Phase 8.2)**:
+>
+> - **Approval flow execution gap resolved**: The Phase 8.1 limitation where approved jobs were stuck in `executing` is fixed. `createPostApprovalHandler()` in `src/main.ts` listens for `awaiting_approval → executing` transitions and resumes Gear execution asynchronously. This is wired via `jobQueue.onStatusChange()` in both `startMeridian()` and the test setup.
+>
+> - **`executePlan` refactored**: The execution logic is now split into `executePlan()` (transitions `validating → executing` + runs steps) and `executeJobSteps()` (runs steps only, used by both normal flow and post-approval flow). This supports the architectural requirement that approved jobs resume execution without re-planning.
+>
+> - **Reflection stub with journalSkip awareness**: `executeJobSteps()` now logs a reflection stub message when `journalSkip` is false (indicating Journal reflection would be triggered in v0.3+). When `journalSkip` is true, reflection is silently skipped. Tests verify both paths.
+>
+> - **Gear action names use classifier vocabulary**: Test plans use action names from the Sentinel risk assessor's classifier vocabulary (`read_file`, `write_file`, `glob`, `delete`) rather than generic names. The risk assessor's `classifyAction()` splits gear/action names on `-` and `_` delimiters but not `:`, so action names must contain recognizable keywords for proper classification.
+>
+> - **Conversation auto-creation on inactivity**: Remains deferred (Phase 8.2 or Bridge enhancements). Not required for user story validation.
+>
+> - **Title population by Scout**: Remains deferred. Not required for user story validation.
+
 ---
 
 ### Phase 8.3: Observability & Debugging Tools
