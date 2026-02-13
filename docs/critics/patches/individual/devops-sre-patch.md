@@ -215,7 +215,7 @@ are community-maintained and may lag behind.
 #### 10.2.2 Install Script
 
 ```bash
-curl -fsSL https://meridian.dev/install.sh | sh
+curl -fsSL https://meridian.dev/install.sh | bash
 ```
 
 The install script:

@@ -1,0 +1,51 @@
+# Meridian — Docker build context exclusions
+
+# Dependencies (reinstalled during build)
+node_modules/
+
+# Build output (rebuilt during build)
+dist/
+build/
+out/
+
+# Data and workspace (runtime only)
+data/
+workspace/
+
+# Version control
+.git/
+
+# Tests (not needed in production image)
+tests/
+coverage/
+test-results/
+playwright-report/
+
+# Documentation (not needed in production image)
+docs/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Secrets (NEVER include in image)
+.env
+.env.*
+*.pem
+*.key
+master_key.txt
+*.vault
+
+# Docker files (avoid recursive context)
+docker-compose*.yml
+.dockerignore
+
+# Claude Code local files
+CLAUDE.local.md
+.claude/

@@ -2519,7 +2519,7 @@ cd meridian && npm install && npm run build
 npm run dev
 
 # Mac Mini / Home Server: install script or global install
-curl -fsSL https://meridian.dev/install.sh | sh
+curl -fsSL https://meridian.dev/install.sh | bash
 # or: npm install -g @meridian/cli
 
 # Linux VPS: Docker Compose (recommended)
@@ -2527,14 +2527,14 @@ curl -fsSL https://meridian.dev/docker-compose.yml -o docker-compose.yml
 docker compose up -d
 
 # Raspberry Pi: install script (no Docker overhead)
-curl -fsSL https://meridian.dev/install.sh | sh
+curl -fsSL https://meridian.dev/install.sh | bash
 ```
 
 > **No single-binary distribution**: `pkg` (the tool for compiling Node.js into a single binary) is unmaintained and incompatible with native modules like `better-sqlite3` and `isolated-vm`. Distribution remains as a Node.js application or Docker image.
 
 ### 10.3 Container Strategy
 
-The Docker Compose deployment includes:
+The Docker Compose deployment includes (simplified; see `docker/docker-compose.yml` for the full production template):
 
 ```yaml
 services:
@@ -2554,7 +2554,7 @@ services:
       - no-new-privileges:true
     read_only: true
     tmpfs:
-      - /tmp
+      - /tmp:size=256M              # Memory-backed, bounded
 
   searxng:                           # Optional: privacy-respecting search
     image: searxng/searxng:latest
@@ -2570,6 +2570,8 @@ volumes:
   meridian-data:
   meridian-workspace:
 ```
+
+> **Implementation note**: The actual `docker/docker-compose.yml` extends this example with a healthcheck, Docker Compose profiles (SearXNG is opt-in via `--profile search`), and a `build` section for building from source.
 
 ### 10.4 Configuration
 

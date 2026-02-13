@@ -2045,6 +2045,19 @@
   - Environment variable reference (`MERIDIAN_*`)
   - Deployment guides per target environment (Section 10.1)
 
+**Implementation Notes** (validated 2026-02-13):
+- Added `.dockerignore` to keep Docker build context lean (excludes node_modules, data, tests, secrets)
+- Added Docker healthcheck hitting `/api/health` with 30s interval
+- SearXNG placed behind a Docker Compose profile (`--profile search`) so it doesn't start by default
+- tmpfs bounded to `size=256M` (improvement over unbounded spec)
+- `tini` used as PID 1 for proper signal handling in container
+- Install script includes systemd service setup (Linux) with security hardening (NoNewPrivileges, ProtectSystem, ProtectHome, PrivateTmp)
+- Architecture document Section 10.3 updated to reference `docker/docker-compose.yml` as the production template
+- Fixed: install script usage `curl | sh` → `curl | bash` (script uses bash-specific `set -euo pipefail`)
+- Fixed: tier detection no longer misclassifies non-RPi ARM64 devices (e.g., Apple Silicon Mac Mini) as pi tier
+- Fixed: deployment.md docker-compose download URLs aligned to architecture doc vanity URLs
+- Fixed: SearXNG `searxng-data` volume documented in deployment.md volumes table
+
 ---
 
 ### Phase 8.5: v0.1 Release Preparation

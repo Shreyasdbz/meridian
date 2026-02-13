@@ -11,7 +11,7 @@
 The installation section offers four options:
 
 ```
-curl -fsSL https://meridian.dev/install.sh | sh
+curl -fsSL https://meridian.dev/install.sh | bash
 npm install -g @meridian/cli
 docker run -d -p 3000:3000 -v meridian-data:/data meridian/meridian
 docker compose up -d

@@ -1,0 +1,137 @@
+# =============================================================================
+# Meridian Configuration — Full Reference
+# =============================================================================
+#
+# Place this file at: data/config.toml
+#
+# Precedence (highest wins):
+#   1. Defaults (baked into application)
+#   2. This config file (data/config.toml)
+#   3. Environment variables (MERIDIAN_* prefix)
+#   4. UI settings (stored in the config table in meridian.db)
+#
+# All values shown below match the application defaults (see src/shared/config.ts).
+# Uncomment and modify as needed.
+# Snake_case keys in TOML are automatically converted to camelCase internally.
+
+# =============================================================================
+# [axis] — Runtime & Scheduler
+# =============================================================================
+# Axis is the deterministic job scheduler and message router. No LLM dependency.
+
+[axis]
+# Number of concurrent job workers.
+# Recommended: 2 for Raspberry Pi, 4 for desktop/VPS.
+# Env: MERIDIAN_AXIS_WORKERS
+workers = 4
+
+# Maximum time (ms) a single job can run before being terminated.
+# Default: 300000 (5 minutes).
+# Env: MERIDIAN_AXIS_JOB_TIMEOUT_MS
+job_timeout_ms = 300000
+
+# =============================================================================
+# [scout] — Planner LLM
+# =============================================================================
+# Scout understands intent, decomposes tasks, and produces structured plans.
+
+[scout]
+# LLM provider: "anthropic" | "openai" | "google" | "ollama" | "openrouter"
+# Env: MERIDIAN_SCOUT_PROVIDER
+provider = "anthropic"
+
+# Maximum context tokens for Scout requests.
+# Env: MERIDIAN_SCOUT_MAX_CONTEXT_TOKENS
+max_context_tokens = 100000
+
+# Temperature for LLM generation (0.0-2.0). Lower = more deterministic.
+# Env: MERIDIAN_SCOUT_TEMPERATURE
+temperature = 0.3
+
+[scout.models]
+# Primary model for complex planning tasks.
+# Env: MERIDIAN_SCOUT_MODELS_PRIMARY
+primary = "claude-sonnet-4-5-20250929"
+
+# Secondary model for simple Gear operations and fast-path responses.
+# Env: MERIDIAN_SCOUT_MODELS_SECONDARY
+secondary = "claude-haiku-4-5-20251001"
+
+# =============================================================================
+# [sentinel] — Safety Validator
+# =============================================================================
+# Sentinel independently reviews execution plans. Use a DIFFERENT provider
+# from Scout for true independence (dual-LLM trust boundary).
+
+[sentinel]
+# LLM provider. Recommended: different from scout.provider.
+# Env: MERIDIAN_SENTINEL_PROVIDER
+provider = "openai"
+
+# Model for plan validation.
+# Env: MERIDIAN_SENTINEL_MODEL
+model = "gpt-4o"
+
+# Maximum context tokens for Sentinel requests.
+# Env: MERIDIAN_SENTINEL_MAX_CONTEXT_TOKENS
+max_context_tokens = 32000
+
+# =============================================================================
+# [journal] — Memory & Learning
+# =============================================================================
+# Journal stores and retrieves knowledge (episodic, semantic, procedural).
+
+[journal]
+# Embedding provider: "local" (Ollama) | "openai" | "anthropic"
+# "local" requires Ollama running with the specified model.
+# Env: MERIDIAN_JOURNAL_EMBEDDING_PROVIDER
+embedding_provider = "local"
+
+# Embedding model name.
+# For local: "nomic-embed-text" via Ollama.
+# Env: MERIDIAN_JOURNAL_EMBEDDING_MODEL
+embedding_model = "nomic-embed-text"
+
+# How long to retain episode memories (days). Older episodes are pruned.
+# Env: MERIDIAN_JOURNAL_EPISODE_RETENTION_DAYS
+episode_retention_days = 90
+
+# Enable reflection pipeline (learning from successes and failures).
+# Env: MERIDIAN_JOURNAL_REFLECTION_ENABLED
+reflection_enabled = true
+
+# =============================================================================
+# [bridge] — Web UI & API
+# =============================================================================
+# Bridge provides the React SPA and Fastify API.
+
+[bridge]
+# IP address to bind to.
+# SECURITY: Default is 127.0.0.1 (localhost only). Remote access requires
+# explicit TLS configuration — see docs/deployment.md.
+# In Docker, set to 0.0.0.0 (the port mapping handles localhost binding).
+# Env: MERIDIAN_BRIDGE_BIND
+bind = "127.0.0.1"
+
+# Port for the Bridge HTTP/WebSocket server.
+# Env: MERIDIAN_BRIDGE_PORT
+port = 3000
+
+# Session duration in hours before requiring re-authentication.
+# Default: 168 (7 days).
+# Env: MERIDIAN_BRIDGE_SESSION_DURATION_HOURS
+session_duration_hours = 168
+
+# =============================================================================
+# [security] — Safety & Cost Controls
+# =============================================================================
+
+[security]
+# Daily cost limit in USD across all LLM API calls.
+# Alerts at 80% and 95%. Hard stop at 100% (configurable override for critical tasks).
+# Env: MERIDIAN_SECURITY_DAILY_COST_LIMIT_USD
+daily_cost_limit_usd = 5.00
+
+# Gear actions that always require explicit user approval.
+# Comma-separated in env var: MERIDIAN_SECURITY_REQUIRE_APPROVAL_FOR
+require_approval_for = ["file.delete", "shell.execute", "network.post", "message.send"]

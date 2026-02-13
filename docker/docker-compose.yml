@@ -1,0 +1,69 @@
+# Meridian — Docker Compose deployment
+# See docs/deployment.md for full deployment guides.
+#
+# Usage:
+#   docker compose up -d              # Start all services
+#   docker compose up -d meridian     # Start Meridian only (no SearXNG)
+#   docker compose logs -f meridian   # Follow logs
+#   docker compose down               # Stop all services
+#
+# First-time setup:
+#   1. Generate a master key:
+#      openssl rand -hex 32 > master_key.txt
+#   2. Copy and edit the example config:
+#      mkdir -p data && cp docs/config.example.toml data/config.toml
+#   3. Start the stack:
+#      docker compose up -d
+
+services:
+  meridian:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: meridian/meridian:latest
+    ports:
+      - "127.0.0.1:3000:3000"          # Bridge UI — localhost only by default
+    volumes:
+      - meridian-data:/data             # Persistent data (databases, config)
+      - meridian-workspace:/workspace   # File workspace for Gear operations
+    environment:
+      - MERIDIAN_MASTER_KEY_FILE=/run/secrets/master_key
+      - MERIDIAN_DATA_DIR=/data
+      - MERIDIAN_WORKSPACE_DIR=/workspace
+      - MERIDIAN_BRIDGE_BIND=0.0.0.0   # Bind all interfaces inside container (port mapped to localhost)
+    secrets:
+      - master_key
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:size=256M
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # Optional: privacy-respecting web search engine for the web-search Gear
+  searxng:
+    image: searxng/searxng:latest
+    profiles:
+      - search
+    expose:
+      - "8080"
+    environment:
+      - SEARXNG_BASE_URL=http://searxng:8080
+    restart: unless-stopped
+    volumes:
+      - searxng-data:/etc/searxng
+
+secrets:
+  master_key:
+    file: ./master_key.txt              # Generated during setup: openssl rand -hex 32 > master_key.txt
+
+volumes:
+  meridian-data:
+  meridian-workspace:
+  searxng-data:
