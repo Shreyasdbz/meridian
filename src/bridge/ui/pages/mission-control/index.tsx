@@ -2,7 +2,7 @@
 // Spatial, status-oriented view for monitoring and managing work.
 // Loads jobs from the API and subscribes to WebSocket for real-time updates.
 
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import type { Job, WSMessage } from '@meridian/shared';
 
@@ -12,6 +12,7 @@ import { useJobStore } from '../../stores/job-store.js';
 import { useUIStore } from '../../stores/ui-store.js';
 
 import { ActiveTasksSection } from './active-tasks-section.js';
+import { JobInspector } from './job-inspector.js';
 import { PendingApprovalsSection } from './pending-approvals-section.js';
 import { RecentCompletionsSection } from './recent-completions-section.js';
 import { ScheduledJobsSection } from './scheduled-jobs-section.js';
@@ -38,6 +39,7 @@ export function MissionControl(): React.ReactElement {
   const updateJob = useJobStore((s) => s.updateJob);
   const setLoading = useJobStore((s) => s.setLoading);
   const setPendingApprovalCount = useUIStore((s) => s.setPendingApprovalCount);
+  const [inspectedJobId, setInspectedJobId] = useState<string | null>(null);
 
   // --- Load jobs on mount ---
   useEffect(() => {
@@ -145,19 +147,25 @@ export function MissionControl(): React.ReactElement {
         ) : (
           <>
             {/* Pending Approvals — always first, prominent placement */}
-            <PendingApprovalsSection jobs={pendingApprovals} />
+            <PendingApprovalsSection jobs={pendingApprovals} onSelectJob={setInspectedJobId} />
 
             {/* Active Tasks */}
-            <ActiveTasksSection jobs={activeJobs} />
+            <ActiveTasksSection jobs={activeJobs} onSelectJob={setInspectedJobId} />
 
             {/* Recent Completions */}
-            <RecentCompletionsSection jobs={recentCompletions} />
+            <RecentCompletionsSection jobs={recentCompletions} onSelectJob={setInspectedJobId} />
 
             {/* Scheduled Jobs (v0.2 placeholder) */}
             <ScheduledJobsSection />
 
             {/* System Health */}
             <SystemHealthSection connectionState={connectionState} />
+
+            {/* Job Inspector dialog (Section 12.4) */}
+            <JobInspector
+              jobId={inspectedJobId}
+              onClose={() => { setInspectedJobId(null); }}
+            />
           </>
         )}
       </div>

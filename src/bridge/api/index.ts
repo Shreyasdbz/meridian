@@ -28,9 +28,11 @@ export {
   memoryRoutes,
   auditRoutes,
   secretRoutes,
+  metricsRoutes,
 } from './routes/index.js';
 export type {
   HealthRouteOptions,
+  ComponentHealth,
   ConversationRouteOptions,
   MessageRouteOptions,
   JobRouteOptions,
@@ -41,4 +43,6 @@ export type {
   AuditLogReader,
   QueryAuditOptions,
   SecretRouteOptions,
+  MetricsRouteOptions,
+  MetricsProvider,
 } from './routes/index.js';

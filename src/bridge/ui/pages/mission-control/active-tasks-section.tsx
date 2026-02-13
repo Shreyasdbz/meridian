@@ -14,12 +14,13 @@ import { getStatusLabel } from '../../lib/vocabulary.js';
 
 interface ActiveTasksSectionProps {
   jobs: Job[];
+  onSelectJob?: (jobId: string) => void;
 }
 
 /**
  * Renders active task cards with progress tracking and cancel functionality.
  */
-export function ActiveTasksSection({ jobs }: ActiveTasksSectionProps): React.ReactElement {
+export function ActiveTasksSection({ jobs, onSelectJob }: ActiveTasksSectionProps): React.ReactElement {
   if (jobs.length === 0) {
     return (
       <section aria-label="Active tasks">
@@ -39,7 +40,7 @@ export function ActiveTasksSection({ jobs }: ActiveTasksSectionProps): React.Rea
       <SectionHeader title="Active Tasks" count={jobs.length} />
       <div className="mt-3 space-y-3">
         {jobs.map((job) => (
-          <ActiveTaskCard key={job.id} job={job} />
+          <ActiveTaskCard key={job.id} job={job} onSelect={onSelectJob} />
         ))}
       </div>
     </section>
@@ -52,9 +53,10 @@ export function ActiveTasksSection({ jobs }: ActiveTasksSectionProps): React.Rea
 
 interface ActiveTaskCardProps {
   job: Job;
+  onSelect?: (jobId: string) => void;
 }
 
-function ActiveTaskCard({ job }: ActiveTaskCardProps): React.ReactElement {
+function ActiveTaskCard({ job, onSelect }: ActiveTaskCardProps): React.ReactElement {
   const [expanded, setExpanded] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const elapsed = useElapsedTime(job.createdAt);
@@ -83,9 +85,12 @@ function ActiveTaskCard({ job }: ActiveTaskCardProps): React.ReactElement {
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
           <Spinner size="sm" />
-          <span className="truncate text-sm font-medium text-gray-900 dark:text-gray-100">
+          <button
+            className="truncate text-sm font-medium text-gray-900 hover:text-meridian-600 dark:text-gray-100 dark:hover:text-meridian-400"
+            onClick={() => onSelect?.(job.id)}
+          >
             {taskName}
-          </span>
+          </button>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <Badge variant="info">{statusLabel}</Badge>

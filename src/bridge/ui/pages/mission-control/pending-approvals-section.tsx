@@ -12,13 +12,14 @@ import { api } from '../../hooks/use-api.js';
 
 interface PendingApprovalsSectionProps {
   jobs: Job[];
+  onSelectJob?: (jobId: string) => void;
 }
 
 /**
  * Renders pending approval cards with Approve/Reject actions.
  * Per architecture 5.5.2, this section has "always-visible, prominent placement".
  */
-export function PendingApprovalsSection({ jobs }: PendingApprovalsSectionProps): React.ReactElement {
+export function PendingApprovalsSection({ jobs, onSelectJob }: PendingApprovalsSectionProps): React.ReactElement {
   if (jobs.length === 0) {
     return (
       <section aria-label="Pending approvals">
@@ -35,7 +36,7 @@ export function PendingApprovalsSection({ jobs }: PendingApprovalsSectionProps):
       <SectionHeader count={jobs.length} />
       <div className="mt-3 space-y-3">
         {jobs.map((job) => (
-          <ApprovalCard key={job.id} job={job} />
+          <ApprovalCard key={job.id} job={job} onSelect={onSelectJob} />
         ))}
       </div>
     </section>
@@ -48,9 +49,10 @@ export function PendingApprovalsSection({ jobs }: PendingApprovalsSectionProps):
 
 interface ApprovalCardProps {
   job: Job;
+  onSelect?: (jobId: string) => void;
 }
 
-function ApprovalCard({ job }: ApprovalCardProps): React.ReactElement {
+function ApprovalCard({ job, onSelect }: ApprovalCardProps): React.ReactElement {
   const [responding, setResponding] = useState(false);
 
   const taskName = typeof job.metadata?.taskName === 'string'
@@ -101,9 +103,12 @@ function ApprovalCard({ job }: ApprovalCardProps): React.ReactElement {
                 d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"
               />
             </svg>
-            <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
+            <button
+              className="text-sm font-medium text-gray-900 hover:text-meridian-600 dark:text-gray-100 dark:hover:text-meridian-400"
+              onClick={() => onSelect?.(job.id)}
+            >
               {taskName}
-            </span>
+            </button>
           </div>
           {reason && (
             <p className="mt-1 text-xs text-gray-600 dark:text-gray-400">

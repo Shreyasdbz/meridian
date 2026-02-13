@@ -7,6 +7,7 @@ import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import type { Job, ExecutionStep } from '@meridian/shared';
 
 import { ActiveTasksSection } from './active-tasks-section.js';
+import { JobInspector } from './job-inspector.js';
 import { PendingApprovalsSection } from './pending-approvals-section.js';
 import { RecentCompletionsSection } from './recent-completions-section.js';
 import { ScheduledJobsSection } from './scheduled-jobs-section.js';
@@ -719,5 +720,145 @@ describe('Job Store', () => {
     });
 
     expect(useJobStore.getState().recentCompletions).toHaveLength(20);
+  });
+});
+
+// ===========================================================================
+// JobInspector
+// ===========================================================================
+
+describe('JobInspector', () => {
+  // jsdom doesn't implement HTMLDialogElement.showModal/close, so we polyfill
+  beforeEach(() => {
+    HTMLDialogElement.prototype.showModal = vi.fn(function (this: HTMLDialogElement) {
+      this.setAttribute('open', '');
+    });
+    HTMLDialogElement.prototype.close = vi.fn(function (this: HTMLDialogElement) {
+      this.removeAttribute('open');
+    });
+  });
+
+  it('should not fetch when jobId is null', () => {
+    render(<JobInspector jobId={null} onClose={vi.fn()} />);
+
+    // No API calls should be made when jobId is null
+    expect(mockApiGet).not.toHaveBeenCalled();
+  });
+
+  it('should show loading state when fetching job', async () => {
+    mockApiGet.mockReturnValue(new Promise(() => {})); // never resolves
+
+    render(<JobInspector jobId="job-123" onClose={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Loading job details...')).toBeInTheDocument();
+    });
+  });
+
+  it('should render job details when loaded', async () => {
+    const job = createTestJob({
+      id: 'job-detail-1',
+      status: 'completed',
+      source: 'user',
+      completedAt: new Date().toISOString(),
+      plan: {
+        id: 'plan-1',
+        jobId: 'job-detail-1',
+        steps: [
+          createTestStep({ description: 'Search the web' }),
+        ],
+      },
+      result: { answer: 'Found it' },
+    });
+
+    mockApiGet.mockImplementation((path: string) => {
+      if (path === '/jobs/job-detail-1') return Promise.resolve(job);
+      if (path === '/jobs/job-detail-1/explain') return Promise.reject(new Error('Not found'));
+      return Promise.reject(new Error('Unknown path'));
+    });
+
+    render(<JobInspector jobId="job-detail-1" onClose={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Done')).toBeInTheDocument();
+    });
+
+    // Plan step should be visible
+    expect(screen.getByText('Search the web')).toBeInTheDocument();
+  });
+
+  it('should render Sentinel explain data when available', async () => {
+    const job = createTestJob({
+      id: 'job-explain-1',
+      status: 'completed',
+      validation: {
+        id: 'val-1',
+        planId: 'plan-1',
+        verdict: 'approved',
+        stepResults: [],
+      },
+    });
+
+    const explainData = {
+      jobId: 'job-explain-1',
+      verdict: 'approved',
+      overallRisk: 'low',
+      reasoning: 'Safe read-only operations',
+      suggestedRevisions: null,
+      steps: [
+        {
+          stepId: 'step-1',
+          verdict: 'approved',
+          category: 'filesystem',
+          riskLevel: 'low',
+          reasoning: 'Read-only file access',
+        },
+      ],
+    };
+
+    mockApiGet.mockImplementation((path: string) => {
+      if (path === '/jobs/job-explain-1') return Promise.resolve(job);
+      if (path === '/jobs/job-explain-1/explain') return Promise.resolve(explainData);
+      return Promise.reject(new Error('Unknown path'));
+    });
+
+    render(<JobInspector jobId="job-explain-1" onClose={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Safe read-only operations')).toBeInTheDocument();
+    });
+
+    expect(screen.getByText('Read-only file access')).toBeInTheDocument();
+    expect(screen.getByText('low risk')).toBeInTheDocument();
+  });
+
+  it('should show error state on fetch failure', async () => {
+    mockApiGet.mockRejectedValue(new Error('Network error'));
+
+    render(<JobInspector jobId="bad-id" onClose={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Failed to load job details')).toBeInTheDocument();
+    });
+  });
+
+  it('should show replay button for terminal jobs', async () => {
+    const job = createTestJob({
+      id: 'job-replay-1',
+      status: 'failed',
+      error: { code: 'TIMEOUT', message: 'Operation timed out', retriable: true },
+    });
+
+    mockApiGet.mockImplementation((path: string) => {
+      if (path === '/jobs/job-replay-1') return Promise.resolve(job);
+      if (path === '/jobs/job-replay-1/explain') return Promise.reject(new Error('Not found'));
+      return Promise.reject(new Error('Unknown path'));
+    });
+
+    render(<JobInspector jobId="job-replay-1" onClose={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Replay')).toBeInTheDocument();
+    });
   });
 });

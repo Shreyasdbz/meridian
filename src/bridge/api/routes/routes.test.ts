@@ -195,8 +195,37 @@ describe('Health routes', () => {
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body);
     expect(body.status).toBe('healthy');
+    expect(body.version).toBe('0.1.0');
+    expect(typeof body.uptime_seconds).toBe('number');
     expect(body.components.database.status).toBe('healthy');
-    expect(typeof body.uptime).toBe('number');
+
+    await server.close();
+  });
+
+  it('should include per-component fields in health check', async () => {
+    const { server } = await createServer({
+      config: TEST_CONFIG,
+      db,
+      logger: mockLogger as unknown as Logger,
+      disableRateLimit: true,
+      getComponentStatus: () => ({
+        axis: { status: 'healthy', queue_depth: 3 },
+        scout: { status: 'healthy', provider: 'anthropic' },
+        sentinel: { status: 'healthy', provider: 'openai' },
+        journal: { status: 'healthy', memory_count: 42 },
+        bridge: { status: 'healthy', active_sessions: 1 },
+      }),
+    });
+
+    const res = await server.inject({ method: 'GET', url: '/api/health' });
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body);
+    expect(body.status).toBe('healthy');
+    expect(body.components.axis.queue_depth).toBe(3);
+    expect(body.components.scout.provider).toBe('anthropic');
+    expect(body.components.sentinel.provider).toBe('openai');
+    expect(body.components.journal.memory_count).toBe(42);
+    expect(body.components.bridge.active_sessions).toBe(1);
 
     await server.close();
   });
@@ -564,6 +593,84 @@ describe('Message routes', () => {
 
     await server.close();
   });
+
+  it('should support dry_run mode without creating job or message', async () => {
+    const { server } = await createServer({
+      config: TEST_CONFIG,
+      db,
+      logger: mockLogger as unknown as Logger,
+      disableRateLimit: true,
+    });
+
+    const { cookie, csrfToken } = await setupAuth(server);
+
+    // Create conversation
+    const convRes = await server.inject({
+      method: 'POST',
+      url: '/api/conversations',
+      headers: { cookie, 'x-csrf-token': csrfToken },
+      payload: { title: 'Dry Run Test' },
+    });
+    const conv = JSON.parse(convRes.body);
+
+    // Send dry_run message
+    const dryRes = await server.inject({
+      method: 'POST',
+      url: '/api/messages?dry_run=true',
+      headers: { cookie, 'x-csrf-token': csrfToken },
+      payload: { conversationId: conv.id, content: 'Test dry run' },
+    });
+
+    expect(dryRes.statusCode).toBe(200);
+    const dryBody = JSON.parse(dryRes.body);
+    expect(dryBody.dryRun).toBe(true);
+    expect(dryBody.conversationId).toBe(conv.id);
+    expect(dryBody.content).toBe('Test dry run');
+    expect(dryBody.validation.conversationExists).toBe(true);
+    expect(dryBody.validation.conversationActive).toBe(true);
+
+    // Verify no job was created
+    const jobsRes = await server.inject({
+      method: 'GET',
+      url: '/api/jobs',
+      headers: { cookie },
+    });
+    const jobs = JSON.parse(jobsRes.body);
+    expect(jobs.total).toBe(0);
+
+    // Verify no message was stored
+    const msgsRes = await server.inject({
+      method: 'GET',
+      url: `/api/messages?conversationId=${conv.id}`,
+      headers: { cookie },
+    });
+    const msgs = JSON.parse(msgsRes.body);
+    expect(msgs.total).toBe(0);
+
+    await server.close();
+  });
+
+  it('should reject dry_run to non-existent conversation', async () => {
+    const { server } = await createServer({
+      config: TEST_CONFIG,
+      db,
+      logger: mockLogger as unknown as Logger,
+      disableRateLimit: true,
+    });
+
+    const { cookie, csrfToken } = await setupAuth(server);
+
+    const res = await server.inject({
+      method: 'POST',
+      url: '/api/messages?dry_run=true',
+      headers: { cookie, 'x-csrf-token': csrfToken },
+      payload: { conversationId: 'nonexistent', content: 'Test' },
+    });
+
+    expect(res.statusCode).toBe(404);
+
+    await server.close();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -855,6 +962,258 @@ describe('Job routes', () => {
     });
 
     expect(res.statusCode).toBe(400);
+
+    await server.close();
+  });
+
+  it('should replay a cancelled job', async () => {
+    const { server } = await createServer({
+      config: TEST_CONFIG,
+      db,
+      logger: mockLogger as unknown as Logger,
+      disableRateLimit: true,
+    });
+
+    const { cookie, csrfToken } = await setupAuth(server);
+
+    // Create conversation and job
+    const convRes = await server.inject({
+      method: 'POST',
+      url: '/api/conversations',
+      headers: { cookie, 'x-csrf-token': csrfToken },
+      payload: { title: 'Replay test' },
+    });
+    const conv = JSON.parse(convRes.body);
+
+    const msgRes = await server.inject({
+      method: 'POST',
+      url: '/api/messages',
+      headers: { cookie, 'x-csrf-token': csrfToken },
+      payload: { conversationId: conv.id, content: 'Run a task' },
+    });
+    const msg = JSON.parse(msgRes.body);
+
+    // Cancel the job to make it terminal
+    await server.inject({
+      method: 'POST',
+      url: `/api/jobs/${msg.jobId}/cancel`,
+      headers: { cookie, 'x-csrf-token': csrfToken },
+    });
+
+    // Replay the cancelled job
+    const replayRes = await server.inject({
+      method: 'POST',
+      url: `/api/jobs/${msg.jobId}/replay`,
+      headers: { cookie, 'x-csrf-token': csrfToken },
+    });
+
+    expect(replayRes.statusCode).toBe(201);
+    const replay = JSON.parse(replayRes.body);
+    expect(replay.originalJobId).toBe(msg.jobId);
+    expect(replay.status).toBe('pending');
+    expect(replay.id).not.toBe(msg.jobId);
+
+    // Verify the new job exists
+    const newJobRes = await server.inject({
+      method: 'GET',
+      url: `/api/jobs/${replay.id}`,
+      headers: { cookie },
+    });
+    expect(newJobRes.statusCode).toBe(200);
+    const newJob = JSON.parse(newJobRes.body);
+    expect(newJob.status).toBe('pending');
+    expect(newJob.metadata?.replayOf).toBe(msg.jobId);
+
+    await server.close();
+  });
+
+  it('should reject replay of a non-terminal job', async () => {
+    const { server } = await createServer({
+      config: TEST_CONFIG,
+      db,
+      logger: mockLogger as unknown as Logger,
+      disableRateLimit: true,
+    });
+
+    const { cookie, csrfToken } = await setupAuth(server);
+
+    const convRes = await server.inject({
+      method: 'POST',
+      url: '/api/conversations',
+      headers: { cookie, 'x-csrf-token': csrfToken },
+      payload: { title: 'Replay reject test' },
+    });
+    const conv = JSON.parse(convRes.body);
+
+    const msgRes = await server.inject({
+      method: 'POST',
+      url: '/api/messages',
+      headers: { cookie, 'x-csrf-token': csrfToken },
+      payload: { conversationId: conv.id, content: 'Active task' },
+    });
+    const msg = JSON.parse(msgRes.body);
+
+    // Try to replay a pending (non-terminal) job
+    const res = await server.inject({
+      method: 'POST',
+      url: `/api/jobs/${msg.jobId}/replay`,
+      headers: { cookie, 'x-csrf-token': csrfToken },
+    });
+
+    expect(res.statusCode).toBe(409);
+
+    await server.close();
+  });
+
+  it('should return 404 when replaying a non-existent job', async () => {
+    const { server } = await createServer({
+      config: TEST_CONFIG,
+      db,
+      logger: mockLogger as unknown as Logger,
+      disableRateLimit: true,
+    });
+
+    const { cookie, csrfToken } = await setupAuth(server);
+
+    const res = await server.inject({
+      method: 'POST',
+      url: '/api/jobs/nonexistent-job-id/replay',
+      headers: { cookie, 'x-csrf-token': csrfToken },
+    });
+
+    expect(res.statusCode).toBe(404);
+
+    await server.close();
+  });
+
+  it('should return Sentinel explain for a validated job', async () => {
+    const { server } = await createServer({
+      config: TEST_CONFIG,
+      db,
+      logger: mockLogger as unknown as Logger,
+      disableRateLimit: true,
+    });
+
+    const { cookie, csrfToken } = await setupAuth(server);
+
+    // Create conversation and job
+    const convRes = await server.inject({
+      method: 'POST',
+      url: '/api/conversations',
+      headers: { cookie, 'x-csrf-token': csrfToken },
+      payload: { title: 'Explain test' },
+    });
+    const conv = JSON.parse(convRes.body);
+
+    const msgRes = await server.inject({
+      method: 'POST',
+      url: '/api/messages',
+      headers: { cookie, 'x-csrf-token': csrfToken },
+      payload: { conversationId: conv.id, content: 'Do something' },
+    });
+    const msg = JSON.parse(msgRes.body);
+
+    // Inject validation data directly into the job row
+    const validationData = {
+      id: 'val-001',
+      planId: 'plan-001',
+      verdict: 'approved',
+      overallRisk: 'low',
+      reasoning: 'The plan uses only safe file-read operations with no side effects.',
+      stepResults: [
+        {
+          stepId: 'step-1',
+          verdict: 'approved',
+          category: 'filesystem',
+          riskLevel: 'low',
+          reasoning: 'Read-only access to user-specified file.',
+        },
+      ],
+    };
+
+    await db.run(
+      'meridian',
+      'UPDATE jobs SET validation_json = ? WHERE id = ?',
+      [JSON.stringify(validationData), msg.jobId],
+    );
+
+    // Request explain
+    const res = await server.inject({
+      method: 'GET',
+      url: `/api/jobs/${msg.jobId}/explain`,
+      headers: { cookie },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const explain = JSON.parse(res.body);
+    expect(explain.jobId).toBe(msg.jobId);
+    expect(explain.verdict).toBe('approved');
+    expect(explain.overallRisk).toBe('low');
+    expect(explain.reasoning).toContain('safe file-read');
+    expect(explain.steps).toHaveLength(1);
+    expect(explain.steps[0].stepId).toBe('step-1');
+    expect(explain.steps[0].reasoning).toContain('Read-only');
+
+    await server.close();
+  });
+
+  it('should return 404 when explaining a job without validation', async () => {
+    const { server } = await createServer({
+      config: TEST_CONFIG,
+      db,
+      logger: mockLogger as unknown as Logger,
+      disableRateLimit: true,
+    });
+
+    const { cookie, csrfToken } = await setupAuth(server);
+
+    // Create a job (it will be in pending state with no validation)
+    const convRes = await server.inject({
+      method: 'POST',
+      url: '/api/conversations',
+      headers: { cookie, 'x-csrf-token': csrfToken },
+      payload: { title: 'No validation test' },
+    });
+    const conv = JSON.parse(convRes.body);
+
+    const msgRes = await server.inject({
+      method: 'POST',
+      url: '/api/messages',
+      headers: { cookie, 'x-csrf-token': csrfToken },
+      payload: { conversationId: conv.id, content: 'Quick question' },
+    });
+    const msg = JSON.parse(msgRes.body);
+
+    const res = await server.inject({
+      method: 'GET',
+      url: `/api/jobs/${msg.jobId}/explain`,
+      headers: { cookie },
+    });
+
+    expect(res.statusCode).toBe(404);
+    const body = JSON.parse(res.body);
+    expect(body.error).toContain('no Sentinel validation');
+
+    await server.close();
+  });
+
+  it('should return 404 when explaining a non-existent job', async () => {
+    const { server } = await createServer({
+      config: TEST_CONFIG,
+      db,
+      logger: mockLogger as unknown as Logger,
+      disableRateLimit: true,
+    });
+
+    const { cookie } = await setupAuth(server);
+
+    const res = await server.inject({
+      method: 'GET',
+      url: '/api/jobs/nonexistent-id/explain',
+      headers: { cookie },
+    });
+
+    expect(res.statusCode).toBe(404);
 
     await server.close();
   });

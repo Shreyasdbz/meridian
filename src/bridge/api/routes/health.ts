@@ -9,13 +9,34 @@ import type { DatabaseClient, Logger } from '@meridian/shared';
 // Types
 // ---------------------------------------------------------------------------
 
+/**
+ * Per-component health status with component-specific fields (Section 12.3).
+ *
+ * Required: `status`.
+ * Component-specific optional fields:
+ * - Axis: `queue_depth`
+ * - Scout/Sentinel: `provider`
+ * - Journal: `memory_count`
+ * - Bridge: `active_sessions`
+ */
+export interface ComponentHealth {
+  status: string;
+  latencyMs?: number;
+  queue_depth?: number;
+  provider?: string;
+  memory_count?: number;
+  active_sessions?: number;
+}
+
 export interface HealthRouteOptions {
   db: DatabaseClient;
   logger: Logger;
+  /** Application version string (e.g. "0.1.0"). */
+  version: string;
   /** Callback to check if the server has completed full startup. */
   isReady: () => boolean;
-  /** Callback to get component health status. */
-  getComponentStatus?: () => Record<string, { status: string; latencyMs?: number }>;
+  /** Callback to get component health status (Section 12.3). */
+  getComponentStatus?: () => Record<string, ComponentHealth>;
 }
 
 // ---------------------------------------------------------------------------
@@ -26,7 +47,7 @@ export function healthRoutes(
   server: FastifyInstance,
   options: HealthRouteOptions,
 ): void {
-  const { db, logger, isReady, getComponentStatus } = options;
+  const { db, logger, version, isReady, getComponentStatus } = options;
 
   // GET /api/health/live — Liveness probe (200 after startup step 1)
   server.get('/api/health/live', {
@@ -91,8 +112,9 @@ export function healthRoutes(
           type: 'object',
           properties: {
             status: { type: 'string' },
+            version: { type: 'string' },
+            uptime_seconds: { type: 'number' },
             timestamp: { type: 'string' },
-            uptime: { type: 'number' },
             components: {
               type: 'object',
               additionalProperties: {
@@ -100,6 +122,10 @@ export function healthRoutes(
                 properties: {
                   status: { type: 'string' },
                   latencyMs: { type: 'number' },
+                  queue_depth: { type: 'number' },
+                  provider: { type: 'string' },
+                  memory_count: { type: 'number' },
+                  active_sessions: { type: 'number' },
                 },
               },
             },
@@ -109,7 +135,7 @@ export function healthRoutes(
     },
   }, async (_request: FastifyRequest, reply: FastifyReply): Promise<void> => {
     // Check database connectivity
-    let dbStatus: { status: string; latencyMs?: number } = { status: 'unknown' };
+    let dbStatus: ComponentHealth = { status: 'unknown' };
     try {
       const start = Date.now();
       await db.query('meridian', 'SELECT 1');
@@ -122,7 +148,7 @@ export function healthRoutes(
       dbStatus = { status: 'unhealthy' };
     }
 
-    const components: Record<string, { status: string; latencyMs?: number }> = {
+    const components: Record<string, ComponentHealth> = {
       database: dbStatus,
       ...(getComponentStatus?.() ?? {}),
     };
@@ -135,8 +161,9 @@ export function healthRoutes(
 
     await reply.send({
       status: overallStatus,
+      version,
+      uptime_seconds: Math.floor(process.uptime()),
       timestamp: new Date().toISOString(),
-      uptime: process.uptime(),
       components,
     });
   });

@@ -1997,6 +1997,30 @@
   - Sentinel explain (Section 12.4): view Sentinel's full reasoning for any approval or rejection
   - Memory watchdog with graduated responses (Section 11.4)
 
+**Implementation Notes (Phase 8.3)**:
+
+> **Metrics endpoint**: All specified counters, histograms, and gauges are implemented via on-demand database queries (no in-memory counter drift). The `MetricsCollector` class in `src/axis/metrics.ts` queries `meridian.db` and `journal.db` directly. `MetricsProvider` interface in `src/bridge/api/routes/metrics.ts` decouples Bridge from Axis.
+>
+> **Memory watchdog**: Implemented in `src/axis/memory-watchdog.ts` as a companion to the existing event loop `Watchdog`. Uses `os.freemem()` for system memory and `process.memoryUsage().rss` for RSS. Default budget from `v8.getHeapStatistics().heap_size_limit`. Graduated responses: normal / warn (70%) / pause (80%) / reject (90%) / emergency (< 256 MB free). Provides `shouldRejectSandbox()` and `shouldPauseBackgroundTasks()` query methods.
+>
+> **Job inspector**: Implemented as a dialog component (`JobInspector`) in Mission Control. Shows 5-stage timeline: Source, Plan, Safety Check, Execution, Result. Clicking a job's task name in any section (Pending Approvals, Active Tasks, Recent Completions) opens the inspector. Fetches full job details and Sentinel explain data.
+>
+> **Sentinel explain**: `GET /api/jobs/:id/explain` endpoint in `src/bridge/api/routes/jobs.ts`. Returns structured explain data from job's `validation_json`: verdict, overall risk, reasoning, suggested revisions, and per-step reasoning. Returns 404 if job has no validation (fast-path or still planning).
+>
+> **Replay mode**: `POST /api/jobs/:id/replay` in `src/bridge/api/routes/jobs.ts`. Creates a new pending job with same conversation_id, priority, source_type, source_message_id. Stores `{ replayOf: originalId }` in metadata. Only terminal jobs (completed, failed, cancelled) can be replayed.
+>
+> **Dry run**: `POST /api/messages?dry_run=true` validates conversation existence/status and returns preview without creating a job or storing a message. Note: Full Scout plan preview (mentioned in architecture) deferred to when Scout integration is wired — currently returns validation info only.
+
+**Implementation Deviations**:
+
+> - **Watchdog block threshold**: Changed from 10s to 5s in `src/shared/constants.ts` (`WATCHDOG_BLOCK_THRESHOLD_MS`) to match architecture Section 11.4 specification ("Blocked > 5s").
+> - **Dry run: plan preview deferred**: Architecture Section 12.4 describes dry run as "see the plan without executing it". Since Scout is not yet wired to the message endpoint, dry run currently validates the message and conversation but does not produce a Scout plan. Full plan preview will be enabled when Scout integration is complete.
+> - **Metrics: LLM placeholders**: All three LLM metrics are emitted as placeholders. `meridian_llm_calls_total` uses aggregate labels `provider="all",model="all"` (counts jobs with plan data). `meridian_llm_tokens_total` emits `provider="none",model="none",type="input"` at value 0. `meridian_llm_latency_seconds` emits an empty histogram (no per-provider/model labels until wired). All will be populated with per-provider/model breakdowns when Scout/Sentinel LLM calls are wired.
+> - **Metrics: Prometheus exposition format compliance**: Counter and gauge families with multiple label variants (e.g. `meridian_jobs_total` by status) emit a single `# HELP` and `# TYPE` header per metric family, with all label-differentiated samples grouped underneath — compliant with the Prometheus exposition format specification.
+> - **Replay endpoint: simplified code path**: The replay endpoint creates new jobs via direct SQL in both the Axis-available and Axis-unavailable code paths, since replay semantics (create a new pending job) don't map to the Axis transition API. This is functionally correct and avoids unnecessary complexity.
+> - **Metrics: `meridian_system_disk_bytes`**: Deferred. Disk usage monitoring requires platform-specific calls and is lower priority for v0.1. Counter is not emitted.
+> - **Job inspector: execution logs**: The inspector shows execution state (status, progress, attempts) but does not display granular execution logs (step-by-step stdout/stderr). This requires the Gear execution pipeline to emit structured logs, which is a future phase feature.
+
 ---
 
 ### Phase 8.4: Docker & Deployment Configuration

@@ -79,8 +79,8 @@ export const CIRCUIT_BREAKER_WINDOW_MS = 300_000;
 // Watchdog
 // ---------------------------------------------------------------------------
 
-/** Event loop block threshold for watchdog (10 seconds) */
-export const WATCHDOG_BLOCK_THRESHOLD_MS = 10_000;
+/** Event loop block threshold for watchdog (5 seconds, Section 11.4) */
+export const WATCHDOG_BLOCK_THRESHOLD_MS = 5_000;
 
 // ---------------------------------------------------------------------------
 // WebSocket (Section 6.5.2)

@@ -13,7 +13,7 @@ import type {
   Logger,
   ValidationResult,
 } from '@meridian/shared';
-import { ConflictError, NotFoundError, ValidationError } from '@meridian/shared';
+import { ConflictError, NotFoundError, ValidationError, generateId } from '@meridian/shared';
 
 import type { AuthService } from '../auth.js';
 
@@ -388,6 +388,138 @@ export function jobRoutes(
       id,
       status: 'cancelled',
       message: 'Job cancelled',
+    });
+  });
+
+  // POST /api/jobs/:id/replay — Re-run a completed/failed job with the same inputs (Section 12.4)
+  server.post<{ Params: { id: string } }>('/api/jobs/:id/replay', {
+    schema: {
+      params: {
+        type: 'object',
+        required: ['id'],
+        properties: {
+          id: { type: 'string' },
+        },
+      },
+      response: {
+        201: {
+          type: 'object',
+          properties: {
+            id: { type: 'string' },
+            originalJobId: { type: 'string' },
+            status: { type: 'string' },
+            message: { type: 'string' },
+          },
+        },
+      },
+    },
+  }, async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply): Promise<void> => {
+    const { id } = request.params;
+
+    // Get the original job
+    const rows = await db.query<JobRow>(
+      'meridian',
+      'SELECT * FROM jobs WHERE id = ?',
+      [id],
+    );
+
+    if (rows.length === 0) {
+      throw new NotFoundError(`Job '${id}' not found`);
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    const originalRow = rows[0]!;
+
+    if (!TERMINAL_STATES.has(originalRow.status)) {
+      throw new ConflictError(
+        `Job '${id}' is in status '${originalRow.status}' — only completed, failed, or cancelled jobs can be replayed`,
+      );
+    }
+
+    // Create a new pending job with the same conversation, priority, and source
+    const newJobId = generateId();
+    const now = new Date().toISOString();
+
+    await db.run(
+      'meridian',
+      `INSERT INTO jobs (id, conversation_id, status, priority, source_type,
+       source_message_id, created_at, updated_at, metadata_json)
+       VALUES (?, ?, 'pending', ?, ?, ?, ?, ?, ?)`,
+      [
+        newJobId,
+        originalRow.conversation_id,
+        originalRow.priority,
+        originalRow.source_type,
+        originalRow.source_message_id ?? null,
+        now,
+        now,
+        JSON.stringify({ replayOf: id }),
+      ],
+    );
+
+    logger.info('Job replayed', {
+      originalJobId: id,
+      newJobId,
+      component: 'bridge',
+    });
+
+    await reply.status(201).send({
+      id: newJobId,
+      originalJobId: id,
+      status: 'pending',
+      message: 'Job replayed — new job created with same inputs',
+    });
+  });
+
+  // GET /api/jobs/:id/explain — View Sentinel's full reasoning (Section 12.4)
+  server.get<{ Params: { id: string } }>('/api/jobs/:id/explain', {
+    schema: {
+      params: {
+        type: 'object',
+        required: ['id'],
+        properties: {
+          id: { type: 'string' },
+        },
+      },
+    },
+  }, async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply): Promise<void> => {
+    const { id } = request.params;
+
+    const rows = await db.query<JobRow>(
+      'meridian',
+      'SELECT * FROM jobs WHERE id = ?',
+      [id],
+    );
+
+    if (rows.length === 0) {
+      throw new NotFoundError(`Job '${id}' not found`);
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    const row = rows[0]!;
+
+    if (!row.validation_json) {
+      throw new NotFoundError(
+        `Job '${id}' has no Sentinel validation — it may still be in planning or used the fast path`,
+      );
+    }
+
+    const validation = JSON.parse(row.validation_json) as ValidationResult;
+
+    await reply.send({
+      jobId: id,
+      verdict: validation.verdict,
+      overallRisk: validation.overallRisk ?? null,
+      reasoning: validation.reasoning ?? null,
+      suggestedRevisions: validation.suggestedRevisions ?? null,
+      steps: validation.stepResults.map((step) => ({
+        stepId: step.stepId,
+        verdict: step.verdict,
+        category: step.category ?? null,
+        riskLevel: step.riskLevel ?? null,
+        reasoning: step.reasoning ?? null,
+      })),
+      metadata: validation.metadata ?? null,
     });
   });
 }

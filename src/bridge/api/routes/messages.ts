@@ -64,8 +64,19 @@ export function messageRoutes(
   const { db, logger, axis } = options;
 
   // POST /api/messages — Send message (creates job via Axis)
+  //
+  // Supports `?dry_run=true` query parameter (Section 12.4):
+  // When set, validates the message and returns what WOULD happen
+  // (conversation lookup, path classification) without creating a
+  // job or storing the message.
   server.post('/api/messages', {
     schema: {
+      querystring: {
+        type: 'object',
+        properties: {
+          dry_run: { type: 'string', enum: ['true', 'false'] },
+        },
+      },
       body: {
         type: 'object',
         required: ['conversationId', 'content'],
@@ -75,19 +86,11 @@ export function messageRoutes(
           modality: { type: 'string', enum: ['text', 'voice', 'image', 'video'] },
         },
       },
-      response: {
-        201: {
-          type: 'object',
-          properties: {
-            id: { type: 'string' },
-            conversationId: { type: 'string' },
-            jobId: { type: 'string' },
-            createdAt: { type: 'string' },
-          },
-        },
-      },
     },
   }, async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
+    const query = (request.query ?? {}) as Record<string, unknown>;
+    const isDryRun = query['dry_run'] === 'true';
+
     const body = request.body as {
       conversationId: string;
       content: string;
@@ -110,6 +113,29 @@ export function messageRoutes(
       throw new ValidationError('Cannot send messages to an archived conversation');
     }
 
+    // --- Dry run: validate and return plan preview without side effects ---
+    if (isDryRun) {
+      logger.info('Dry run message evaluation', {
+        conversationId: body.conversationId,
+        contentLength: body.content.length,
+        component: 'bridge',
+      });
+
+      await reply.status(200).send({
+        dryRun: true,
+        conversationId: body.conversationId,
+        content: body.content,
+        modality: body.modality ?? 'text',
+        validation: {
+          conversationExists: true,
+          conversationActive: true,
+        },
+        note: 'Dry run — no job created, no message stored. In production, Scout would produce an execution plan here.',
+      });
+      return;
+    }
+
+    // --- Normal flow: create job and store message ---
     const messageId = generateId();
     const now = new Date().toISOString();
     const modality = body.modality ?? 'text';

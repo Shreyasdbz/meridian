@@ -9,6 +9,7 @@ import { getStatusLabel } from '../../lib/vocabulary.js';
 
 interface RecentCompletionsSectionProps {
   jobs: Job[];
+  onSelectJob?: (jobId: string) => void;
 }
 
 /**
@@ -16,6 +17,7 @@ interface RecentCompletionsSectionProps {
  */
 export function RecentCompletionsSection({
   jobs,
+  onSelectJob,
 }: RecentCompletionsSectionProps): React.ReactElement {
   if (jobs.length === 0) {
     return (
@@ -37,7 +39,7 @@ export function RecentCompletionsSection({
       </h2>
       <div className="mt-3 space-y-2">
         {jobs.map((job) => (
-          <CompletionCard key={job.id} job={job} />
+          <CompletionCard key={job.id} job={job} onSelect={onSelectJob} />
         ))}
       </div>
     </section>
@@ -48,7 +50,7 @@ export function RecentCompletionsSection({
 // CompletionCard
 // ---------------------------------------------------------------------------
 
-function CompletionCard({ job }: { job: Job }): React.ReactElement {
+function CompletionCard({ job, onSelect }: { job: Job; onSelect?: (jobId: string) => void }): React.ReactElement {
   const statusLabel = getStatusLabel(job.status);
   const taskName = typeof job.metadata?.taskName === 'string'
     ? job.metadata.taskName
@@ -85,9 +87,12 @@ function CompletionCard({ job }: { job: Job }): React.ReactElement {
               <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
             </svg>
           )}
-          <span className="truncate text-sm font-medium text-gray-900 dark:text-gray-100">
+          <button
+            className="truncate text-sm font-medium text-gray-900 hover:text-meridian-600 dark:text-gray-100 dark:hover:text-meridian-400"
+            onClick={() => onSelect?.(job.id)}
+          >
             {taskName}
-          </span>
+          </button>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <Badge variant={isDone ? 'success' : isFailed ? 'danger' : 'default'}>

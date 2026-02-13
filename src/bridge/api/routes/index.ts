@@ -1,7 +1,7 @@
 // @meridian/bridge/api/routes — Route barrel exports
 
 export { healthRoutes } from './health.js';
-export type { HealthRouteOptions } from './health.js';
+export type { HealthRouteOptions, ComponentHealth } from './health.js';
 
 export { conversationRoutes } from './conversations.js';
 export type { ConversationRouteOptions } from './conversations.js';
@@ -26,3 +26,6 @@ export type { AuditRouteOptions, AuditLogReader, QueryAuditOptions } from './aud
 
 export { secretRoutes } from './secrets.js';
 export type { SecretRouteOptions } from './secrets.js';
+
+export { metricsRoutes } from './metrics.js';
+export type { MetricsRouteOptions, MetricsProvider } from './metrics.js';

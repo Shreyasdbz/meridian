@@ -746,7 +746,7 @@ describe('Full Pipeline Integration', () => {
       const sentinelCalls = dispatchSpy.mock.calls.filter(
         (call) => {
           const msg = call[0];
-          return msg?.to === 'sentinel' && msg?.type === 'validate.request';
+          return msg.to === 'sentinel' && msg.type === 'validate.request';
         },
       );
 
@@ -754,7 +754,7 @@ describe('Full Pipeline Integration', () => {
       expect(sentinelCalls.length).toBe(1);
 
       // Verify payload contains ONLY the plan — no user message or history
-      const sentinelPayload = sentinelCalls[0]![0]!.payload!;
+      const sentinelPayload = sentinelCalls[0]![0].payload;
       expect(sentinelPayload).toHaveProperty('plan');
       expect(sentinelPayload).not.toHaveProperty('userMessage');
       expect(sentinelPayload).not.toHaveProperty('conversationHistory');

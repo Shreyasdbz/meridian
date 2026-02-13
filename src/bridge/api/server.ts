@@ -29,6 +29,8 @@ import { AuthService, authRoutes } from './auth.js';
 import { authMiddleware, csrfMiddleware } from './middleware.js';
 import {
   type AuditLogReader,
+  type ComponentHealth,
+  type MetricsProvider,
   healthRoutes,
   conversationRoutes,
   messageRoutes,
@@ -38,6 +40,7 @@ import {
   memoryRoutes,
   auditRoutes,
   secretRoutes,
+  metricsRoutes,
 } from './routes/index.js';
 import { type WebSocketManager, websocketRoutes } from './websocket.js';
 
@@ -142,10 +145,14 @@ export interface CreateServerOptions {
   auditLog?: AuditLogReader;
   /** Secrets vault instance for secrets routes. */
   vault?: SecretsVault;
+  /** Metrics provider for /api/metrics endpoint (opt-in). */
+  metricsProvider?: MetricsProvider;
+  /** Application version string (e.g. "0.1.0"). */
+  version?: string;
   /** Callback to check if the server has completed full startup. */
   isReady?: () => boolean;
-  /** Callback to get component health status. */
-  getComponentStatus?: () => Record<string, { status: string; latencyMs?: number }>;
+  /** Callback to get component health status (Section 12.3). */
+  getComponentStatus?: () => Record<string, ComponentHealth>;
   /** Override max WebSocket connections (defaults to MAX_WS_CONNECTIONS_DESKTOP). */
   maxWsConnections?: number;
 }
@@ -159,7 +166,7 @@ export async function createServer(options: CreateServerOptions): Promise<{
   authService: AuthService;
   wsManager: WebSocketManager;
 }> {
-  const { config, db, logger, rateLimitMax, disableRateLimit, auditLog, vault, isReady, getComponentStatus, maxWsConnections } = options;
+  const { config, db, logger, rateLimitMax, disableRateLimit, auditLog, vault, metricsProvider, version, isReady, getComponentStatus, maxWsConnections } = options;
 
   const server = Fastify({
     logger: false, // We use our own logger
@@ -256,6 +263,7 @@ export async function createServer(options: CreateServerOptions): Promise<{
   healthRoutes(server, {
     db,
     logger,
+    version: version ?? '0.1.0',
     isReady: isReady ?? (() => true),
     getComponentStatus,
   });
@@ -273,6 +281,10 @@ export async function createServer(options: CreateServerOptions): Promise<{
 
   if (vault) {
     secretRoutes(server, { vault, logger });
+  }
+
+  if (metricsProvider) {
+    metricsRoutes(server, { metricsProvider });
   }
 
   // ----- WebSocket routes (Phase 6.3) -----
@@ -402,6 +414,8 @@ export async function createBridgeServer(
     disableRateLimit: options.disableRateLimit,
     auditLog: options.auditLog,
     vault: options.vault,
+    metricsProvider: options.metricsProvider,
+    version: options.version,
     isReady: options.isReady ?? (() => axis.isReady()),
     getComponentStatus: options.getComponentStatus,
     maxWsConnections: options.maxWsConnections,
@@ -495,8 +509,8 @@ async function createServerWithAxis(options: CreateServerOptions & { axis: AxisA
 }> {
   const {
     config, db, logger, axis,
-    rateLimitMax, disableRateLimit, auditLog, vault,
-    isReady, getComponentStatus, maxWsConnections,
+    rateLimitMax, disableRateLimit, auditLog, vault, metricsProvider,
+    version, isReady, getComponentStatus, maxWsConnections,
   } = options;
 
   const server = Fastify({
@@ -569,6 +583,7 @@ async function createServerWithAxis(options: CreateServerOptions & { axis: AxisA
   healthRoutes(server, {
     db,
     logger,
+    version: version ?? '0.1.0',
     isReady: isReady ?? (() => true),
     getComponentStatus,
   });
@@ -584,6 +599,9 @@ async function createServerWithAxis(options: CreateServerOptions & { axis: AxisA
   }
   if (vault) {
     secretRoutes(server, { vault, logger });
+  }
+  if (metricsProvider) {
+    metricsRoutes(server, { metricsProvider });
   }
 
   // ----- WebSocket -----

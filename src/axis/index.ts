@@ -118,3 +118,17 @@ export type {
   QueryAuditOptions,
   WriteAuditEntryOptions,
 } from './audit.js';
+
+// Metrics collector (Section 12.2)
+export { MetricsCollector } from './metrics.js';
+export type { MetricsCollectorOptions } from './metrics.js';
+
+// Memory watchdog (Section 11.4)
+export { MemoryWatchdog } from './memory-watchdog.js';
+export type {
+  MemoryWatchdogLogger,
+  MemoryWatchdogOptions,
+  MemoryPressureLevel,
+  MemorySnapshot,
+  MemoryPressureCallback,
+} from './memory-watchdog.js';
