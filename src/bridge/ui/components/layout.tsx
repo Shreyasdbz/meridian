@@ -5,6 +5,7 @@ import { ChatPage } from '../pages/chat/index.js';
 import { MissionControl } from '../pages/mission-control/index.js';
 import { useUIStore } from '../stores/ui-store.js';
 
+import { ApprovalDialog } from './approval-dialog/index.js';
 import { Badge } from './badge.js';
 
 const BREAKPOINT = 1280;
@@ -160,6 +161,9 @@ export function Layout() {
           <>{activeView === 'chat' ? <ChatPage /> : <MissionControl />}</>
         )}
       </main>
+
+      {/* Approval dialog (Phase 7.5 — shown as modal for Sentinel escalations) */}
+      <ApprovalDialog />
 
       {/* Router outlet for modals/overlays */}
       <Outlet />

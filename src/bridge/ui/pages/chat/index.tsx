@@ -7,6 +7,7 @@ import type { Conversation, Message, WSMessage } from '@meridian/shared';
 
 import { api } from '../../hooks/use-api.js';
 import { useWebSocket } from '../../hooks/use-websocket.js';
+import { useApprovalStore } from '../../stores/approval-store.js';
 import { useConversationStore } from '../../stores/conversation-store.js';
 import { useUIStore } from '../../stores/ui-store.js';
 
@@ -82,6 +83,21 @@ export function ChatPage(): React.ReactElement {
         }
         case 'status': {
           activeJobStatusRef.current = msg.status;
+          // If a job leaves awaiting_approval, remove it from the approval queue
+          if (msg.status !== 'awaiting_approval') {
+            useApprovalStore.getState().removeJob(msg.jobId);
+          }
+          break;
+        }
+        case 'approval_required': {
+          // Enqueue approval request for the approval dialog (Phase 7.5)
+          const nonce = typeof msg.metadata?.nonce === 'string' ? msg.metadata.nonce : '';
+          useApprovalStore.getState().enqueue({
+            jobId: msg.jobId,
+            plan: msg.plan,
+            risks: msg.risks,
+            nonce,
+          });
           break;
         }
         case 'error': {

@@ -1772,6 +1772,21 @@
 - Approve/reject API calls
 - Standing rule suggestion trigger after N approvals
 
+**Implementation Notes**:
+
+- Validation: 48 tests covering RiskIndicator (rendering, color mapping for all 4 levels), StepChecklist (single/multi-step rendering, per-step approve/reject in individual review mode), StandingRuleBanner (rendering, dismiss), ApprovalDialog (rendering, plain-language summary, API approve/reject with nonce, details expansion, individual review mode, standing rule suggestion after 5 approvals, queue management), approval store operations (enqueue, dequeue, removeJob, step verdicts), and vocabulary translation (safety check, tool labels).
+- Zustand store (`useApprovalStore`) manages approval queue with FIFO processing, dialog state (details expanded, review mode, step decisions, reject reason, submitting), and standing rule suggestion logic with per-category counts persisted to localStorage (`meridian-approval-counts`).
+- WebSocket integration: `approval_required` messages are handled in `ChatPage` WS handler, which enqueues the approval request with plan, risks, and nonce from metadata. Job status changes automatically remove jobs from the approval queue.
+- Uses native `<dialog>` element with `showModal()` for proper modal behavior and backdrop. Escape key is intercepted and prevented — user must explicitly approve or reject.
+- Approval dialog renders as a top-level overlay in `Layout` (below main content, above router outlet), visible regardless of active view (chat or mission control).
+- Standing rule suggestion tracks per-category approval counts in localStorage across sessions. When any category reaches 5 approvals, a `StandingRuleBanner` appears suggesting the user create a standing rule in "Trust settings" (user-facing name for Sentinel Memory).
+
+**Implementation Deviations**:
+
+- **Developer mode deferred to Phase 7.6**: Plan's "Details" button shows raw plan JSON in the approval dialog, which provides the diagnostic information. The formal developer mode toggle (showing internal component names throughout the UI) is explicitly a Phase 7.6 deliverable under Settings. No architecture deviation — the approval dialog provides the Phase 7.5 portion (expandable plan details).
+- **Rejection via separate endpoint**: Plan specifies `POST /api/jobs/:id/approve` but the implementation also calls `POST /api/jobs/:id/reject` (which already exists from Phase 6 bridge-axis integration) for rejections with optional reason. This is consistent with the existing API surface — no architecture deviation.
+- **Queue-based architecture**: Plan describes a single approval dialog. Implementation adds a FIFO queue to handle concurrent approval requests (multiple jobs may await approval simultaneously). Queue indicator badge shows count when >1 pending. This extends the plan without contradiction.
+
 ---
 
 ### Phase 7.6: Error Communication & Settings
