@@ -20,3 +20,7 @@ export { Spinner } from './components/spinner.js';
 export { Card, CardHeader } from './components/card.js';
 export { ThemeProvider } from './components/theme-provider.js';
 export { Layout } from './components/layout.js';
+
+// Pages
+export { OnboardingWizard } from './pages/onboarding/index.js';
+export { LoginPage } from './pages/login.js';

@@ -1672,6 +1672,17 @@
 - Password strength validation
 - API key validation flow
 
+**Implementation Notes**:
+
+- Validation: 49 tests (27 component tests across all 4 steps + wizard integration, 22 password strength unit tests) covering password creation, strength indicator, API key validation, provider selection/switching, comfort level persistence, starter prompts, wizard navigation, and API error handling.
+- Backend support: `POST /api/config/validate-provider` added to `routes/config.ts` with real API validation for Anthropic (messages endpoint), OpenAI (models endpoint), and Ollama (local tags endpoint), each with 10s timeout and abort controller.
+- `App.tsx` correctly routes: loading spinner → onboarding wizard → login page → main app, with `onboarding_completed` config key controlling the transition.
+
+**Implementation Deviations**:
+
+- **Confirm password field added**: Plan specifies "Single password field with strength indicator." Implementation adds a confirm password field with mismatch validation. This is standard security UX practice — the "single" in the plan refers to the absence of a username/email field (single-user), not a prohibition on password confirmation.
+- **Provider text cards instead of logos**: Plan specifies "Grid of provider logos." Implementation uses text-based cards (provider name + short description) without actual logo images. Functionally complete — Anthropic is pre-selected, all three providers (Anthropic, OpenAI, Ollama) are available. Logo images can be added as a visual polish pass without functional changes.
+
 ---
 
 ### Phase 7.3: Conversation View (Chat)
