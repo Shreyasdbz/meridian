@@ -305,11 +305,21 @@ export class JobQueue {
 
     // Use a transaction to atomically find + claim
     return this.db.transaction<Job | undefined>('meridian', async () => {
-      // Find the highest-priority pending job
+      // Find the highest-priority pending job, enforcing conversation-level
+      // serial execution (Section 4.6): skip jobs whose conversation already
+      // has an active (non-terminal) job being processed.
       const candidates = await this.db.query<JobRow>(
         'meridian',
         `SELECT * FROM jobs
          WHERE status = 'pending'
+           AND (
+             conversation_id IS NULL
+             OR conversation_id NOT IN (
+               SELECT DISTINCT conversation_id FROM jobs
+               WHERE conversation_id IS NOT NULL
+                 AND status IN ('planning', 'validating', 'awaiting_approval', 'executing')
+             )
+           )
          ORDER BY
            CASE priority
              WHEN 'critical' THEN 0

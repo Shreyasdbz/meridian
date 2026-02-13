@@ -29,7 +29,8 @@
       "@meridian/sentinel": ["./src/sentinel/index.ts"],
       "@meridian/journal": ["./src/journal/index.ts"],
       "@meridian/bridge": ["./src/bridge/index.ts"],
-      "@meridian/gear": ["./src/gear/index.ts"]
+      "@meridian/gear": ["./src/gear/index.ts"],
+      "@meridian/main": ["./src/main.ts"]
     }
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "tests/**/*.ts", "tests/**/*.tsx"],

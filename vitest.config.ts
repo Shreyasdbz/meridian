@@ -23,6 +23,7 @@ export default defineConfig({
       '@meridian/journal': path.resolve(__dirname, 'src/journal/index.ts'),
       '@meridian/bridge': path.resolve(__dirname, 'src/bridge/index.ts'),
       '@meridian/gear': path.resolve(__dirname, 'src/gear/index.ts'),
+      '@meridian/main': path.resolve(__dirname, 'src/main.ts'),
     },
   },
 });

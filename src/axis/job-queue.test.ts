@@ -280,6 +280,84 @@ describe('JobQueue', () => {
       expect(fetched?.status).toBe('planning');
       expect(fetched?.workerId).toBe('worker-1');
     });
+
+    it('should skip jobs whose conversation already has an active job (Section 4.6)', async () => {
+      // Create conversation to satisfy FK constraint
+      const convId = 'conv-serial-test';
+      const now = new Date().toISOString();
+      await db.run(
+        'meridian',
+        `INSERT INTO conversations (id, title, status, created_at, updated_at)
+         VALUES (?, 'serial test', 'active', ?, ?)`,
+        [convId, now, now],
+      );
+
+      const job1 = await queue.createJob(createOptions({ conversationId: convId }));
+      const job2 = await queue.createJob(createOptions({ conversationId: convId }));
+
+      // Claim job1 — now conv has an active (planning) job
+      const claimed1 = await queue.claimJob('worker-1');
+      expect(claimed1?.id).toBe(job1.id);
+
+      // Try to claim job2 — should be skipped because conv already has active job
+      const claimed2 = await queue.claimJob('worker-2');
+      expect(claimed2).toBeUndefined();
+
+      // Complete job1 — now job2 should be claimable
+      await queue.transition(job1.id, 'planning', 'completed', {
+        result: { text: 'done' },
+      });
+
+      const claimed3 = await queue.claimJob('worker-3');
+      expect(claimed3?.id).toBe(job2.id);
+    });
+
+    it('should allow concurrent claims from different conversations', async () => {
+      const now = new Date().toISOString();
+      await db.run(
+        'meridian',
+        `INSERT INTO conversations (id, title, status, created_at, updated_at)
+         VALUES (?, 'conv a', 'active', ?, ?)`,
+        ['conv-a', now, now],
+      );
+      await db.run(
+        'meridian',
+        `INSERT INTO conversations (id, title, status, created_at, updated_at)
+         VALUES (?, 'conv b', 'active', ?, ?)`,
+        ['conv-b', now, now],
+      );
+
+      const job1 = await queue.createJob(createOptions({ conversationId: 'conv-a' }));
+      const job2 = await queue.createJob(createOptions({ conversationId: 'conv-b' }));
+
+      const claimed1 = await queue.claimJob('worker-1');
+      expect(claimed1?.id).toBe(job1.id);
+
+      // Job2 from a different conversation should be claimable
+      const claimed2 = await queue.claimJob('worker-2');
+      expect(claimed2?.id).toBe(job2.id);
+    });
+
+    it('should allow claiming jobs without a conversation ID regardless', async () => {
+      const now = new Date().toISOString();
+      await db.run(
+        'meridian',
+        `INSERT INTO conversations (id, title, status, created_at, updated_at)
+         VALUES (?, 'conv x', 'active', ?, ?)`,
+        ['conv-x', now, now],
+      );
+
+      const jobWithConv = await queue.createJob(createOptions({ conversationId: 'conv-x' }));
+      const jobNoConv = await queue.createJob(createOptions());
+
+      // Claim the conv job
+      const claimed1 = await queue.claimJob('worker-1');
+      expect(claimed1?.id).toBe(jobWithConv.id);
+
+      // Job without conversation should still be claimable
+      const claimed2 = await queue.claimJob('worker-2');
+      expect(claimed2?.id).toBe(jobNoConv.id);
+    });
   });
 
   // ---------------------------------------------------------------------------

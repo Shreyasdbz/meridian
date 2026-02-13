@@ -1919,6 +1919,18 @@
   - Conversation serial execution
   - Graceful degradation scenarios
 
+> **v0.1 limitations (Phase 8.1)**:
+>
+> - **Approval flow execution gap**: After `awaiting_approval`, the pipeline processor returns and the worker is released. Bridge's approve API transitions the job to `executing`, but no worker picks it up for actual Gear execution. Full post-approval execution requires re-enqueuing or a dedicated approval-completion worker (deferred to Phase 8.2 or later).
+>
+> - **No automatic retry on Scout failure**: When Scout is unreachable, the job fails with `SCOUT_UNREACHABLE` and `retriable: true`, but automatic retry-with-backoff is not implemented. The retry flag enables future retry infrastructure. Manual re-submission via Bridge works as a workaround.
+>
+> - **No Scout replanning on Gear failure**: Step 9 specifies "failures route to Scout for replanning". In v0.1, Gear execution failure fails the job with an error instead of re-routing to Scout. Replanning requires failure context assembly and token budget tracking across retries (deferred to v0.2+).
+>
+> - **Conversation auto-creation on inactivity not implemented**: Section 4.6 specifies "new conversation on 30 minutes inactivity". Conversations are created explicitly via Bridge API only. Timer-based auto-creation deferred to Phase 8.2 or Bridge enhancements.
+>
+> - **Title population by Scout not implemented**: Section 4.6 specifies "title populated by Scout after first exchange". Titles are set at conversation creation via Bridge API. Scout-based title generation deferred to Phase 8.2.
+
 ---
 
 ### Phase 8.2: End-to-End User Story Validation
