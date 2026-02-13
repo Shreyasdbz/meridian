@@ -8,6 +8,7 @@ import { api } from './hooks/use-api.js';
 import { LoginPage } from './pages/login.js';
 import { OnboardingWizard } from './pages/onboarding/index.js';
 import { useAuthStore } from './stores/auth-store.js';
+import { useConversationStore } from './stores/conversation-store.js';
 
 export function App() {
   const isLoading = useAuthStore((s) => s.isLoading);
@@ -50,9 +51,10 @@ export function App() {
     void checkStatus();
   }, [setSetupComplete, setAuthenticated, setCsrfToken, setLoading]);
 
-  const handleOnboardingComplete = (_starterPrompt?: string): void => {
-    // TODO (Phase 7.3): Pass starter prompt to chat when available
-    // For now, just transition to the main app
+  const handleOnboardingComplete = (starterPrompt?: string): void => {
+    if (starterPrompt) {
+      useConversationStore.getState().setInputValue(starterPrompt);
+    }
   };
 
   return (

@@ -684,6 +684,7 @@ export interface Message {
   modality?: MessageModality;
   attachments?: MessageAttachment[];
   createdAt?: string;
+  metadata?: Record<string, unknown>;
 }
 
 /**

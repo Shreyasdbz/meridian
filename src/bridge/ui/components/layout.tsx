@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Outlet } from 'react-router-dom';
 
+import { ChatPage } from '../pages/chat/index.js';
 import { useUIStore } from '../stores/ui-store.js';
 
 import { Badge } from './badge.js';
@@ -147,7 +148,7 @@ export function Layout() {
           // Wide: side-by-side layout
           <>
             <div className="flex flex-1 flex-col overflow-hidden border-r border-gray-200 dark:border-gray-800">
-              <ChatPlaceholder />
+              <ChatPage />
             </div>
             <div className="flex w-[480px] shrink-0 flex-col overflow-hidden">
               <MissionControlPlaceholder />
@@ -155,39 +156,12 @@ export function Layout() {
           </>
         ) : (
           // Narrow: toggled view
-          <>{activeView === 'chat' ? <ChatPlaceholder /> : <MissionControlPlaceholder />}</>
+          <>{activeView === 'chat' ? <ChatPage /> : <MissionControlPlaceholder />}</>
         )}
       </main>
 
       {/* Router outlet for modals/overlays */}
       <Outlet />
-    </div>
-  );
-}
-
-/** Placeholder for the Chat view (Phase 7.3). */
-function ChatPlaceholder() {
-  return (
-    <div className="flex flex-1 flex-col items-center justify-center p-8 text-center">
-      <div className="mb-4 rounded-full bg-meridian-500/10 p-4">
-        <svg
-          className="h-8 w-8 text-meridian-500"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-          strokeWidth={1.5}
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z"
-          />
-        </svg>
-      </div>
-      <h2 className="text-lg font-medium text-gray-900 dark:text-gray-100">Chat</h2>
-      <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-        Conversation view will be available in Phase 7.3
-      </p>
     </div>
   );
 }
