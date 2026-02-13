@@ -18,7 +18,7 @@ export type {
 
 // Job queue & state machine
 export { JobQueue, VALID_TRANSITIONS, TERMINAL_STATES } from './job-queue.js';
-export type { CreateJobOptions, TransitionOptions } from './job-queue.js';
+export type { CreateJobOptions, TransitionOptions, JobStatusChangeListener } from './job-queue.js';
 
 // Request deduplication (Section 5.1.9)
 export { computeDedupHash, findDuplicateJobId } from './dedup.js';

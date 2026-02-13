@@ -2,6 +2,7 @@
 
 export {
   createServer,
+  createBridgeServer,
   AuthService,
   authRoutes,
   authMiddleware,
@@ -13,6 +14,8 @@ export {
 
 export type {
   CreateServerOptions,
+  BridgeServer,
+  AxisAdapter,
   AuthServiceOptions,
   AuthMiddlewareOptions,
   CsrfMiddlewareOptions,

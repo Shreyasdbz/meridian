@@ -64,6 +64,17 @@ export interface CreateJobOptions {
 }
 
 // ---------------------------------------------------------------------------
+// Status change listener
+// ---------------------------------------------------------------------------
+
+export type JobStatusChangeListener = (
+  jobId: string,
+  from: JobStatus,
+  to: JobStatus,
+  job: Job,
+) => void;
+
+// ---------------------------------------------------------------------------
 // Transition options
 // ---------------------------------------------------------------------------
 
@@ -158,9 +169,18 @@ function rowToJob(row: JobRow): Job {
  */
 export class JobQueue {
   private readonly db: DatabaseClient;
+  private readonly statusChangeListeners: JobStatusChangeListener[] = [];
 
   constructor(db: DatabaseClient) {
     this.db = db;
+  }
+
+  /**
+   * Register a listener for job status changes.
+   * Called after every successful state transition.
+   */
+  onStatusChange(listener: JobStatusChangeListener): void {
+    this.statusChangeListeners.push(listener);
   }
 
   // -------------------------------------------------------------------------
@@ -323,12 +343,23 @@ export class JobQueue {
         return undefined;
       }
 
-      return rowToJob({
+      const claimedJob = rowToJob({
         ...candidate,
         status: 'planning',
         worker_id: workerId,
         updated_at: now,
       });
+
+      // Notify status change listeners (pending → planning)
+      for (const listener of this.statusChangeListeners) {
+        try {
+          listener(claimedJob.id, 'pending', 'planning', claimedJob);
+        } catch {
+          // Listeners must not break the claim
+        }
+      }
+
+      return claimedJob;
     });
   }
 
@@ -450,6 +481,20 @@ export class JobQueue {
       }
       // CAS failed — job is in a different state
       return false;
+    }
+
+    // Notify status change listeners
+    if (this.statusChangeListeners.length > 0) {
+      const updatedJob = await this.getJob(jobId);
+      if (updatedJob) {
+        for (const listener of this.statusChangeListeners) {
+          try {
+            listener(jobId, from, to, updatedJob);
+          } catch {
+            // Listeners must not break the transition
+          }
+        }
+      }
     }
 
     return true;

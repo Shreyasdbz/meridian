@@ -2,14 +2,27 @@
 // Sets up HTTP server with security headers, CORS, rate limiting,
 // credential filtering, and system prompt leakage detection.
 
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
+
 import cookie from '@fastify/cookie';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
+import fastifyStatic from '@fastify/static';
 import websocket from '@fastify/websocket';
 import Fastify from 'fastify';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 
-import type { BridgeConfig, DatabaseClient, Logger, SecretsVault } from '@meridian/shared';
+import type {
+  BridgeConfig,
+  DatabaseClient,
+  Job,
+  JobStatus,
+  Logger,
+  SecretsVault,
+  WSApprovalRequiredMessage,
+  WSStatusMessage,
+} from '@meridian/shared';
 import { API_RATE_LIMIT_PER_MINUTE, redact } from '@meridian/shared';
 
 import { AuthService, authRoutes } from './auth.js';
@@ -306,6 +319,314 @@ export async function createServer(options: CreateServerOptions): Promise<{
       }
 
       // Unknown errors — don't leak internals
+      logger.error('Unhandled error', {
+        component: 'bridge',
+        error: error.message,
+        stack: error.stack,
+      });
+      await reply.status(500).send({ error: 'Internal server error' });
+    },
+  );
+
+  return { server, authService, wsManager };
+}
+
+// ---------------------------------------------------------------------------
+// BridgeServer — integrated server with Axis wiring (Phase 6.4)
+// ---------------------------------------------------------------------------
+
+/**
+ * Minimal interface describing what Bridge needs from Axis.
+ * Defined locally to avoid a bridge → axis module dependency.
+ * The real Axis class satisfies this interface.
+ */
+export interface AxisAdapter {
+  createJob(options: {
+    conversationId?: string;
+    source: 'user' | 'schedule' | 'webhook' | 'sub-job';
+    sourceMessageId?: string;
+    metadata?: Record<string, unknown>;
+  }): Promise<Job>;
+  getJob(jobId: string): Promise<Job | undefined>;
+  cancelJob(jobId: string): Promise<boolean>;
+  isReady(): boolean;
+  internals: {
+    jobQueue: {
+      onStatusChange(
+        listener: (jobId: string, from: JobStatus, to: JobStatus, job: Job) => void,
+      ): void;
+      transition(
+        jobId: string,
+        from: JobStatus,
+        to: JobStatus,
+        options?: Record<string, unknown>,
+      ): Promise<boolean>;
+    };
+  };
+}
+
+export interface BridgeServer {
+  start(): Promise<void>;
+  stop(): Promise<void>;
+  readonly server: FastifyInstance;
+  readonly wsManager: WebSocketManager;
+  readonly authService: AuthService;
+}
+
+/**
+ * Create a fully-wired Bridge server connected to an Axis runtime.
+ *
+ * This is the recommended entry point for production. It:
+ * 1. Creates a Fastify server with Axis wired into message and job routes
+ * 2. Registers job status change listeners that broadcast via WebSocket
+ * 3. Serves static frontend files in production (if dist/ exists)
+ * 4. Returns a `BridgeServer` with start/stop lifecycle
+ *
+ * The existing `createServer()` continues to work without Axis for
+ * backward compatibility and standalone testing.
+ */
+export async function createBridgeServer(
+  config: BridgeConfig,
+  axis: AxisAdapter,
+  options: { db: DatabaseClient; logger: Logger } & Partial<Omit<CreateServerOptions, 'config' | 'db' | 'logger'>>,
+): Promise<BridgeServer> {
+  const { db, logger } = options;
+
+  // 1. Create the server with Axis wired into routes
+  const { server, authService, wsManager } = await createServerWithAxis({
+    config,
+    db,
+    logger,
+    axis,
+    rateLimitMax: options.rateLimitMax,
+    disableRateLimit: options.disableRateLimit,
+    auditLog: options.auditLog,
+    vault: options.vault,
+    isReady: options.isReady ?? (() => axis.isReady()),
+    getComponentStatus: options.getComponentStatus,
+    maxWsConnections: options.maxWsConnections,
+  });
+
+  // 2. Register job status change listener for WebSocket broadcasts
+  axis.internals.jobQueue.onStatusChange((jobId, _from, to, job) => {
+    // Broadcast status update for every transition
+    const statusMsg: WSStatusMessage = {
+      type: 'status',
+      jobId,
+      status: to,
+    };
+    wsManager.broadcast(statusMsg);
+
+    // On awaiting_approval, also broadcast approval_required with plan + risks.
+    // NOTE: Nonce creation is async, so approval_required may arrive a few ms
+    // after the status message. Clients should handle both independently.
+    if (to === 'awaiting_approval' && job.plan) {
+      const plan = job.plan;
+      const risks = job.validation?.stepResults ?? [];
+      void authService.createApprovalNonce(jobId).then((nonce) => {
+        const approvalMsg: WSApprovalRequiredMessage = {
+          type: 'approval_required',
+          jobId,
+          plan,
+          risks,
+          metadata: { nonce },
+        };
+        wsManager.broadcast(approvalMsg);
+      }).catch((error: unknown) => {
+        logger.error('Failed to create approval nonce for WS broadcast', {
+          component: 'bridge',
+          jobId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
+    }
+  });
+
+  // 3. Static file serving for production SPA (conditional)
+  const distDir = join(process.cwd(), 'src', 'bridge', 'ui', 'dist');
+  if (existsSync(distDir)) {
+    await server.register(fastifyStatic, {
+      root: distDir,
+      prefix: '/',
+      wildcard: false,
+      decorateReply: false,
+    });
+
+    // SPA fallback: serve index.html for non-API routes
+    server.setNotFoundHandler(async (request, reply) => {
+      if (!request.url.startsWith('/api/')) {
+        return reply.sendFile('index.html', distDir);
+      }
+      await reply.status(404).send({ error: 'Not found' });
+    });
+  }
+
+  // 4. Return BridgeServer with lifecycle
+  return {
+    server,
+    wsManager,
+    authService,
+
+    async start(): Promise<void> {
+      await server.listen({ port: config.port, host: config.bind });
+      logger.info('Bridge server started', {
+        component: 'bridge',
+        bind: config.bind,
+        port: config.port,
+      });
+    },
+
+    async stop(): Promise<void> {
+      wsManager.close();
+      await server.close();
+      logger.info('Bridge server stopped', { component: 'bridge' });
+    },
+  };
+}
+
+/**
+ * Internal: create a server with Axis wired into message and job routes.
+ * Same as createServer but passes axis to route registrations.
+ */
+async function createServerWithAxis(options: CreateServerOptions & { axis: AxisAdapter }): Promise<{
+  server: FastifyInstance;
+  authService: AuthService;
+  wsManager: WebSocketManager;
+}> {
+  const {
+    config, db, logger, axis,
+    rateLimitMax, disableRateLimit, auditLog, vault,
+    isReady, getComponentStatus, maxWsConnections,
+  } = options;
+
+  const server = Fastify({
+    logger: false,
+    trustProxy: false,
+  });
+
+  // ----- Plugins -----
+  await server.register(cookie);
+  await server.register(websocket);
+  await server.register(cors, {
+    origin: `http://${config.bind}:${config.port}`,
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token'],
+  });
+
+  if (!disableRateLimit) {
+    await server.register(rateLimit, {
+      max: rateLimitMax ?? API_RATE_LIMIT_PER_MINUTE,
+      timeWindow: '1 minute',
+    });
+  }
+
+  // ----- Security headers -----
+  server.addHook('onSend', async (_request: FastifyRequest, reply: FastifyReply) => {
+    for (const [header, value] of Object.entries(SECURITY_HEADERS)) {
+      reply.header(header, value);
+    }
+  });
+
+  // ----- Credential filtering -----
+  server.addHook(
+    'onSend',
+    async (_request: FastifyRequest, _reply: FastifyReply, payload: unknown): Promise<unknown> => {
+      if (typeof payload !== 'string') return payload;
+      if (containsCredentials(payload)) {
+        logger.warn('Credential pattern detected in response, redacting', {
+          component: 'bridge',
+        });
+        return filterCredentials(payload);
+      }
+      return payload;
+    },
+  );
+
+  // ----- System prompt leakage detection -----
+  server.addHook(
+    'onSend',
+    async (_request: FastifyRequest, _reply: FastifyReply, payload: unknown): Promise<unknown> => {
+      if (typeof payload !== 'string') return payload;
+      const marker = detectSystemPromptLeakage(payload);
+      if (marker) {
+        logger.warn('Possible system prompt leakage detected', {
+          component: 'bridge',
+          marker,
+        });
+      }
+      return payload;
+    },
+  );
+
+  // ----- Auth -----
+  const authService = new AuthService({ db, config, logger });
+  await server.register(authMiddleware, { authService });
+  await server.register(csrfMiddleware, { authService });
+  authRoutes(server, authService);
+
+  // ----- Routes (with Axis wired in) -----
+  healthRoutes(server, {
+    db,
+    logger,
+    isReady: isReady ?? (() => true),
+    getComponentStatus,
+  });
+  conversationRoutes(server, { db, logger });
+  messageRoutes(server, { db, logger, axis });
+  jobRoutes(server, { db, logger, authService, axis });
+  gearRoutes(server, { db, logger });
+  configRoutes(server, { db, logger });
+  memoryRoutes(server, { db, logger });
+
+  if (auditLog) {
+    auditRoutes(server, { auditLog, logger });
+  }
+  if (vault) {
+    secretRoutes(server, { vault, logger });
+  }
+
+  // ----- WebSocket -----
+  const wsManager = websocketRoutes(server, {
+    db,
+    logger,
+    authService,
+    maxConnections: maxWsConnections,
+  });
+
+  // ----- Error handler -----
+  server.setErrorHandler(
+    async (error: Error, _request: FastifyRequest, reply: FastifyReply) => {
+      const statusCode = 'statusCode' in error
+        ? (error as { statusCode: number }).statusCode
+        : undefined;
+
+      if (statusCode && statusCode >= 400 && statusCode < 500) {
+        await reply.status(statusCode).send({
+          error: error.message,
+          ...(statusCode === 429 ? { retryAfterMs: 60_000 } : {}),
+        });
+        return;
+      }
+
+      if ('code' in error) {
+        const meridianError = error as Error & { code: string };
+        const statusMap: Record<string, number> = {
+          ERR_AUTH: 401,
+          ERR_AUTHZ: 403,
+          ERR_NOT_FOUND: 404,
+          ERR_CONFLICT: 409,
+          ERR_VALIDATION: 400,
+          ERR_RATE_LIMIT: 429,
+        };
+        const status = statusMap[meridianError.code] ?? 500;
+        await reply.status(status).send({
+          error: meridianError.message,
+          code: meridianError.code,
+        });
+        return;
+      }
+
       logger.error('Unhandled error', {
         component: 'bridge',
         error: error.message,

@@ -1,8 +1,8 @@
 // @meridian/bridge/api — public API
 
 // Server
-export { createServer } from './server.js';
-export type { CreateServerOptions } from './server.js';
+export { createServer, createBridgeServer } from './server.js';
+export type { CreateServerOptions, BridgeServer, AxisAdapter } from './server.js';
 export { containsCredentials, filterCredentials, detectSystemPromptLeakage } from './server.js';
 
 // Auth

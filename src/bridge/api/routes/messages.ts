@@ -3,16 +3,27 @@
 
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 
-import type { DatabaseClient, Logger } from '@meridian/shared';
+import type { DatabaseClient, Job, Logger } from '@meridian/shared';
 import { generateId, NotFoundError, ValidationError } from '@meridian/shared';
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
+/** Minimal Axis interface for message routes (avoids bridge → axis dependency). */
+interface MessageAxisAdapter {
+  createJob(options: {
+    conversationId?: string;
+    source: 'user' | 'schedule' | 'webhook' | 'sub-job';
+    sourceMessageId?: string;
+  }): Promise<Job>;
+}
+
 export interface MessageRouteOptions {
   db: DatabaseClient;
   logger: Logger;
+  /** When provided, jobs are created via Axis instead of direct SQL INSERT. */
+  axis?: MessageAxisAdapter;
 }
 
 interface MessageRow {
@@ -50,7 +61,7 @@ export function messageRoutes(
   server: FastifyInstance,
   options: MessageRouteOptions,
 ): void {
-  const { db, logger } = options;
+  const { db, logger, axis } = options;
 
   // POST /api/messages — Send message (creates job via Axis)
   server.post('/api/messages', {
@@ -100,17 +111,27 @@ export function messageRoutes(
     }
 
     const messageId = generateId();
-    const jobId = generateId();
     const now = new Date().toISOString();
     const modality = body.modality ?? 'text';
 
-    // Create the pending job first (messages.job_id references jobs.id)
-    await db.run(
-      'meridian',
-      `INSERT INTO jobs (id, conversation_id, status, priority, source_type, source_message_id, created_at, updated_at)
-       VALUES (?, ?, 'pending', 'normal', 'user', ?, ?, ?)`,
-      [jobId, body.conversationId, messageId, now, now],
-    );
+    // Create the pending job — via Axis when available, direct SQL otherwise
+    let jobId: string;
+    if (axis) {
+      const job = await axis.createJob({
+        conversationId: body.conversationId,
+        source: 'user',
+        sourceMessageId: messageId,
+      });
+      jobId = job.id;
+    } else {
+      jobId = generateId();
+      await db.run(
+        'meridian',
+        `INSERT INTO jobs (id, conversation_id, status, priority, source_type, source_message_id, created_at, updated_at)
+         VALUES (?, ?, 'pending', 'normal', 'user', ?, ?, ?)`,
+        [jobId, body.conversationId, messageId, now, now],
+      );
+    }
 
     // Create the user message
     await db.run(

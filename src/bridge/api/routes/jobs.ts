@@ -21,10 +21,27 @@ import type { AuthService } from '../auth.js';
 // Types
 // ---------------------------------------------------------------------------
 
+/** Minimal Axis interface for job routes (avoids bridge → axis dependency). */
+interface JobAxisAdapter {
+  cancelJob(jobId: string): Promise<boolean>;
+  internals: {
+    jobQueue: {
+      transition(
+        jobId: string,
+        from: JobStatus,
+        to: JobStatus,
+        options?: Record<string, unknown>,
+      ): Promise<boolean>;
+    };
+  };
+}
+
 export interface JobRouteOptions {
   db: DatabaseClient;
   logger: Logger;
   authService: AuthService;
+  /** When provided, job transitions use Axis instead of direct SQL. */
+  axis?: JobAxisAdapter;
 }
 
 interface JobRow {
@@ -112,7 +129,7 @@ export function jobRoutes(
   server: FastifyInstance,
   options: JobRouteOptions,
 ): void {
-  const { db, logger, authService } = options;
+  const { db, logger, authService, axis } = options;
 
   // GET /api/jobs — List jobs (with status filter, pagination)
   server.get('/api/jobs', {
@@ -270,16 +287,27 @@ export function jobRoutes(
       );
     }
 
-    // Transition to executing
-    const now = new Date().toISOString();
-    const result = await db.run(
-      'meridian',
-      `UPDATE jobs SET status = 'executing', updated_at = ? WHERE id = ? AND status = 'awaiting_approval'`,
-      [now, id],
-    );
+    // Transition to executing — via Axis when available, direct SQL otherwise
+    if (axis) {
+      const transitioned = await axis.internals.jobQueue.transition(
+        id,
+        'awaiting_approval',
+        'executing',
+      );
+      if (!transitioned) {
+        throw new ConflictError(`Job '${id}' state changed concurrently`);
+      }
+    } else {
+      const now = new Date().toISOString();
+      const result = await db.run(
+        'meridian',
+        `UPDATE jobs SET status = 'executing', updated_at = ? WHERE id = ? AND status = 'awaiting_approval'`,
+        [now, id],
+      );
 
-    if (result.changes === 0) {
-      throw new ConflictError(`Job '${id}' state changed concurrently`);
+      if (result.changes === 0) {
+        throw new ConflictError(`Job '${id}' state changed concurrently`);
+      }
     }
 
     logger.info('Job approved', { jobId: id, component: 'bridge' });
@@ -334,16 +362,24 @@ export function jobRoutes(
       );
     }
 
-    const now = new Date().toISOString();
-    const result = await db.run(
-      'meridian',
-      `UPDATE jobs SET status = 'cancelled', completed_at = ?, updated_at = ?
-       WHERE id = ? AND status = ?`,
-      [now, now, id, row.status],
-    );
+    // Cancel — via Axis when available, direct SQL otherwise
+    if (axis) {
+      const cancelled = await axis.cancelJob(id);
+      if (!cancelled) {
+        throw new ConflictError(`Job '${id}' state changed concurrently`);
+      }
+    } else {
+      const now = new Date().toISOString();
+      const result = await db.run(
+        'meridian',
+        `UPDATE jobs SET status = 'cancelled', completed_at = ?, updated_at = ?
+         WHERE id = ? AND status = ?`,
+        [now, now, id, row.status],
+      );
 
-    if (result.changes === 0) {
-      throw new ConflictError(`Job '${id}' state changed concurrently`);
+      if (result.changes === 0) {
+        throw new ConflictError(`Job '${id}' state changed concurrently`);
+      }
     }
 
     logger.info('Job cancelled', { jobId: id, component: 'bridge' });
