@@ -7,18 +7,25 @@
   "engines": {
     "node": ">=20.0.0"
   },
+  "bin": {
+    "meridian": "./dist/cli/index.js"
+  },
+  "main": "./dist/main.js",
   "scripts": {
     "build": "tsup",
     "build:ui": "vite build",
-    "dev": "tsx watch src/index.ts",
+    "dev": "tsx watch src/main.ts",
     "dev:ui": "vite",
     "preview:ui": "vite preview",
+    "start": "node dist/main.js",
     "test": "vitest",
+    "test:e2e": "playwright test",
     "lint": "eslint --no-error-on-unmatched-pattern src/ tests/",
     "format": "prettier --write '**/*.{ts,tsx}' --ignore-unknown",
     "format:check": "prettier --check '**/*.{ts,tsx}' --ignore-unknown",
     "typecheck": "tsc --noEmit",
-    "validate:boundaries": "depcruise src/ --config .dependency-cruiser.cjs"
+    "validate:boundaries": "depcruise src/ --config .dependency-cruiser.cjs",
+    "validate:all": "npm run typecheck && npm run lint && npm run validate:boundaries && npm run test -- --run"
   },
   "imports": {
     "@meridian/shared": "./src/shared/index.ts",
@@ -27,9 +34,11 @@
     "@meridian/sentinel": "./src/sentinel/index.ts",
     "@meridian/journal": "./src/journal/index.ts",
     "@meridian/bridge": "./src/bridge/index.ts",
-    "@meridian/gear": "./src/gear/index.ts"
+    "@meridian/gear": "./src/gear/index.ts",
+    "@meridian/main": "./src/main.ts"
   },
   "devDependencies": {
+    "@playwright/test": "^1.58.2",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",

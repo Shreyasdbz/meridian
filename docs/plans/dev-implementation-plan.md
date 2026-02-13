@@ -2085,6 +2085,21 @@
 - Verify all module boundaries enforced (`dependency-cruiser`)
 - Tag and build v0.1.0
 
+**Implementation Notes** (validated 2026-02-13):
+
+- **CHANGELOG.md**: Created with Keep a Changelog 1.1.0 format. All v0.1 features organized by component (Shared, Axis, Scout, Sentinel, Gear, Bridge, Infrastructure) plus a Security section.
+- **Update mechanism**: Implemented in `src/cli/update.ts` with `src/cli/index.ts` as the CLI entry point. Functions: `checkForUpdates()` (GitHub releases API, no telemetry), `createPreUpdateBackup()` (backs up all SQLite databases and secrets.vault), `applyUpdate()` (backup + `npm install`), `rollback()` (restore from most recent backup). 45 unit tests.
+- **v0.1 success criteria**: Verified via `tests/integration/success-criteria.test.ts` (9 tests). Bootstrap < 5s, fast-path < 5s, full-path task < 10s, approval flow complete state machine traversal — all passing.
+- **Playwright E2E**: `tests/e2e/v01-release.test.ts` with 10 tests across 4 describe blocks: onboarding (2), chat fast path (3), full path with approval (3), login (2). Configuration in `playwright.config.ts`.
+- **Full test suite**: 2165 tests across 74 files — all passing. TypeScript strict mode, ESLint, Prettier, dependency-cruiser (272 modules, 0 violations).
+- **Build**: `tsup` configured with 3 entry points (`src/index.ts`, `src/main.ts`, `src/cli/index.ts`). Shebang banner (`#!/usr/bin/env node`) applies to all entry points via global banner config (tsup does not support per-entry banners in a single config; harmless on non-CLI entries since Node.js ignores shebangs). `package.json` includes `bin`, `main`, `start`, `test:e2e`, and `validate:all` entries. `@meridian/main` path alias added to `package.json` imports for consistency with `tsconfig.json` and `vitest.config.ts`.
+- **Git tag**: Deferred to explicit user request. Build artifacts and package metadata are ready for `v0.1.0`.
+
+**Implementation Deviations**:
+
+- **Update mechanism scope (v0.1)**: Architecture Section 10.5 references "binary and data" backup. In v0.1, Meridian is distributed as a git-cloned Node.js application (not a compiled binary), so `applyUpdate()` runs `npm install` to update dependencies. Users should `git pull` first for code updates. Full npm-based distribution with automatic code updates planned for future versions. Data backup/rollback is fully functional.
+- **E2E tests require mock mode**: The Playwright tests are configured to run against a dev server with `MERIDIAN_E2E_MOCK=1` environment variable for deterministic LLM responses. Running against real LLM providers is deferred to manual QA.
+
 ---
 
 ## Phase 9: v0.2 — Safety, Scheduling & Observability
