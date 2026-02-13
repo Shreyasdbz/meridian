@@ -14,6 +14,8 @@ export interface ProviderConfig {
   hasKey: boolean;
 }
 
+export type FontSize = 'small' | 'default' | 'large' | 'x-large';
+
 interface SettingsState {
   /** Developer mode toggle (Section 5.5.5). */
   developerMode: boolean;
@@ -32,6 +34,15 @@ interface SettingsState {
 
   /** Configured provider list (names + whether key exists). */
   providers: ProviderConfig[];
+
+  /** High contrast mode (Section 5.5.14). */
+  highContrast: boolean;
+
+  /** Configurable font size (Section 5.5.14). */
+  fontSize: FontSize;
+
+  /** Reduced motion preference (Section 5.5.14). */
+  reducedMotion: boolean;
 
   /** Whether settings have been loaded from server. */
   isLoaded: boolean;
@@ -65,6 +76,15 @@ interface SettingsActions {
   /** Refresh provider list from server. */
   refreshProviders: () => Promise<void>;
 
+  /** Toggle high contrast mode (Section 5.5.14). */
+  setHighContrast: (enabled: boolean) => void;
+
+  /** Set font size (Section 5.5.14). */
+  setFontSize: (size: FontSize) => void;
+
+  /** Toggle reduced motion (Section 5.5.14). */
+  setReducedMotion: (enabled: boolean) => void;
+
   /** Clear save error. */
   clearError: () => void;
 }
@@ -81,6 +101,9 @@ interface ConfigResponse {
   trust_profile?: TrustProfile;
   scout_provider?: string;
   sentinel_provider?: string;
+  high_contrast?: boolean;
+  font_size?: FontSize;
+  reduced_motion?: boolean;
 }
 
 interface SecretsListResponse {
@@ -109,13 +132,90 @@ async function persistConfig(key: string, value: unknown): Promise<void> {
 // Store
 // ---------------------------------------------------------------------------
 
-export const useSettingsStore = create<SettingsStore>((set) => ({
+// ---------------------------------------------------------------------------
+// Accessibility persistence helpers (client-side, localStorage)
+// ---------------------------------------------------------------------------
+
+const A11Y_STORAGE_KEY = 'meridian-accessibility';
+
+interface A11yPrefs {
+  highContrast: boolean;
+  fontSize: FontSize;
+  reducedMotion: boolean;
+}
+
+function loadA11yPrefs(): A11yPrefs {
+  if (typeof window === 'undefined') {
+    return { highContrast: false, fontSize: 'default', reducedMotion: false };
+  }
+  try {
+    const stored = localStorage.getItem(A11Y_STORAGE_KEY);
+    if (stored) {
+      const parsed = JSON.parse(stored) as Partial<A11yPrefs>;
+      return {
+        highContrast: parsed.highContrast ?? false,
+        fontSize: parsed.fontSize ?? 'default',
+        reducedMotion: parsed.reducedMotion ?? false,
+      };
+    }
+  } catch {
+    // Malformed stored data — use defaults
+  }
+  return { highContrast: false, fontSize: 'default', reducedMotion: false };
+}
+
+function saveA11yPrefs(prefs: A11yPrefs): void {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(A11Y_STORAGE_KEY, JSON.stringify(prefs));
+}
+
+const FONT_SIZE_MAP: Record<FontSize, string> = {
+  small: '14px',
+  default: '16px',
+  large: '18px',
+  'x-large': '20px',
+};
+
+function applyA11yToDOM(prefs: A11yPrefs): void {
+  if (typeof document === 'undefined') return;
+  const root = document.documentElement;
+
+  // High contrast
+  if (prefs.highContrast) {
+    root.classList.add('high-contrast');
+  } else {
+    root.classList.remove('high-contrast');
+  }
+
+  // Font size
+  root.style.fontSize = FONT_SIZE_MAP[prefs.fontSize];
+
+  // Reduced motion
+  if (prefs.reducedMotion) {
+    root.classList.add('reduce-motion');
+  } else {
+    root.classList.remove('reduce-motion');
+  }
+}
+
+// Apply on load
+const initialA11y = loadA11yPrefs();
+applyA11yToDOM(initialA11y);
+
+// ---------------------------------------------------------------------------
+// Store
+// ---------------------------------------------------------------------------
+
+export const useSettingsStore = create<SettingsStore>((set, get) => ({
   developerMode: false,
   shellGearEnabled: false,
   trustProfile: 'supervised',
   scoutProvider: '',
   sentinelProvider: '',
   providers: [],
+  highContrast: initialA11y.highContrast,
+  fontSize: initialA11y.fontSize,
+  reducedMotion: initialA11y.reducedMotion,
   isLoaded: false,
   isSaving: false,
   saveError: null,
@@ -220,6 +320,42 @@ export const useSettingsStore = create<SettingsStore>((set) => ({
     } catch {
       // Silently fail — provider list stays as-is
     }
+  },
+
+  setHighContrast: (enabled) => {
+    set({ highContrast: enabled });
+    const state = get();
+    const prefs: A11yPrefs = {
+      highContrast: enabled,
+      fontSize: state.fontSize,
+      reducedMotion: state.reducedMotion,
+    };
+    saveA11yPrefs(prefs);
+    applyA11yToDOM(prefs);
+  },
+
+  setFontSize: (size) => {
+    set({ fontSize: size });
+    const state = get();
+    const prefs: A11yPrefs = {
+      highContrast: state.highContrast,
+      fontSize: size,
+      reducedMotion: state.reducedMotion,
+    };
+    saveA11yPrefs(prefs);
+    applyA11yToDOM(prefs);
+  },
+
+  setReducedMotion: (enabled) => {
+    set({ reducedMotion: enabled });
+    const state = get();
+    const prefs: A11yPrefs = {
+      highContrast: state.highContrast,
+      fontSize: state.fontSize,
+      reducedMotion: enabled,
+    };
+    saveA11yPrefs(prefs);
+    applyA11yToDOM(prefs);
   },
 
   clearError: () => {

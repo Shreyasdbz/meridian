@@ -1837,7 +1837,7 @@
 
 - `components/notifications/`:
   - In-app toast notifications (always available, Section 5.5.12)
-  - Browser push notifications (opt-in via Web Push API)
+  - Browser push notifications (opt-in via `Notification.requestPermission()` in v0.1; full Web Push API with service worker deferred to v0.2 per architecture Section 16 deferred table)
   - Notification queue management
   - External notifications via webhook (configured in settings, delivered via Gear) — placeholder for v0.2
 - Accessibility (Section 5.5.14):
@@ -1851,8 +1851,14 @@
 **Test Deliverables**:
 
 - Toast notification rendering and dismissal
-- Keyboard navigation tests (axe-core or similar)
+- Keyboard navigation tests (manual ARIA checks with @testing-library/react; axe-core integration deferred until e2e test phase)
 - ARIA attribute verification
+
+**Implementation Deviations**:
+
+- **Reduced motion setting added**: The architecture (Section 5.5.14) lists high contrast and configurable font size but does not explicitly mention reduced motion. Added as an additional accessibility setting because WCAG 2.1 AA compliance (the stated target) recommends honoring `prefers-reduced-motion`. CSS respects both the OS-level `prefers-reduced-motion` media query and a manual user toggle. No architecture deviation — this is an enhancement within the stated WCAG 2.1 AA compliance target.
+- **Accessibility preferences stored client-side (localStorage)**: Unlike other settings persisted via the API, accessibility preferences (high contrast, font size, reduced motion) are stored in `localStorage` under the `meridian-accessibility` key and applied to the DOM on page load before any server communication. This avoids a flash of unstyled content (FOUC) where the default font size / contrast would briefly appear before server-side preferences load. No architecture deviation — implementation detail for better UX.
+- **Toast component restructured**: The prior Phase 7.6 included a simple `toast.tsx` component. Phase 7.7 replaces it with a full `components/notifications/` directory containing `NotificationContainer`, `ToastItem`, `PushNotificationBanner`, and `WebhookPlaceholder` components, along with a dedicated `notification-store.ts`. The old `toast.tsx` was deleted. No architecture deviation — structural improvement.
 
 ---
 

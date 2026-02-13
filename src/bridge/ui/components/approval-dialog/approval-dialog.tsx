@@ -195,6 +195,7 @@ export function ApprovalDialog(): React.ReactElement | null {
       onKeyDown={handleKeyDown}
       className="m-auto max-w-xl rounded-xl border border-gray-200 bg-white p-0 shadow-xl backdrop:bg-black/50 dark:border-gray-700 dark:bg-gray-900"
       aria-label="Approval required"
+      aria-modal="true"
       data-testid="approval-dialog"
     >
       <div className="p-6">

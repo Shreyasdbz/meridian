@@ -7,8 +7,10 @@ import { useEffect } from 'react';
 import { Button } from '../../components/button.js';
 import { useSettingsStore } from '../../stores/settings-store.js';
 
+import { AccessibilitySection } from './accessibility-section.js';
 import { AiProviderSection } from './ai-provider-section.js';
 import { DeveloperModeSection } from './developer-mode-section.js';
+import { NotificationSection } from './notification-section.js';
 import { SameProviderWarning } from './same-provider-warning.js';
 import { SessionSection } from './session-section.js';
 import { ShellGearSection } from './shell-gear-section.js';
@@ -83,6 +85,12 @@ export function SettingsPage({ onClose }: SettingsPageProps): React.ReactElement
 
             {/* AI provider configuration */}
             <AiProviderSection />
+
+            {/* Notifications (Section 5.5.12) */}
+            <NotificationSection />
+
+            {/* Accessibility (Section 5.5.14) */}
+            <AccessibilitySection />
 
             {/* Developer mode (Section 5.5.5) */}
             <DeveloperModeSection />

@@ -12,6 +12,7 @@ import { useUIStore } from '../stores/ui-store.js';
 import { ApprovalDialog } from './approval-dialog/index.js';
 import { Badge } from './badge.js';
 import { CommandPalette } from './command-palette/index.js';
+import { NotificationContainer } from './notifications/index.js';
 
 const BREAKPOINT = 1280;
 
@@ -135,12 +136,21 @@ export function Layout() {
           onClose={() => { setCommandPaletteOpen(false); }}
           onOpenSettings={() => { setSettingsOpen(true); }}
         />
+        <NotificationContainer />
       </div>
     );
   }
 
   return (
     <div className="flex h-screen flex-col overflow-hidden">
+      {/* Skip to content link (Section 5.5.14 — Accessibility) */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[100] focus:rounded-md focus:bg-meridian-600 focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-white focus:outline-none"
+      >
+        Skip to main content
+      </a>
+
       {/* Header */}
       <header className="flex h-12 shrink-0 items-center justify-between border-b border-gray-200 px-4 dark:border-gray-800">
         <div className="flex items-center gap-2">
@@ -160,7 +170,7 @@ export function Layout() {
         <div className="flex items-center gap-2">
           {/* View toggle (narrow screens only) */}
           {!isWide && (
-            <div className="flex rounded-lg bg-gray-100 p-0.5 dark:bg-gray-800">
+            <nav aria-label="View switcher" className="flex rounded-lg bg-gray-100 p-0.5 dark:bg-gray-800">
               <button
                 onClick={() => {
                   setActiveView('chat');
@@ -193,7 +203,7 @@ export function Layout() {
                   </Badge>
                 )}
               </button>
-            </div>
+            </nav>
           )}
 
           {/* Settings button */}
@@ -278,7 +288,7 @@ export function Layout() {
       </header>
 
       {/* Main content */}
-      <main className="flex flex-1 overflow-hidden">
+      <main id="main-content" className="flex flex-1 overflow-hidden">
         {isWide ? (
           // Wide: side-by-side layout
           <>
@@ -304,6 +314,9 @@ export function Layout() {
         onClose={() => { setCommandPaletteOpen(false); }}
         onOpenSettings={() => { setSettingsOpen(true); }}
       />
+
+      {/* Toast notifications (Section 5.5.12) */}
+      <NotificationContainer />
 
       {/* Router outlet for modals/overlays */}
       <Outlet />

@@ -90,3 +90,70 @@
     @apply font-semibold;
   }
 }
+
+/* High contrast mode (Section 5.5.14) */
+@layer base {
+  .high-contrast {
+    --hc-border: 2px;
+    --hc-text: #000;
+    --hc-bg: #fff;
+  }
+
+  .dark.high-contrast {
+    --hc-text: #fff;
+    --hc-bg: #000;
+  }
+
+  .high-contrast body {
+    color: var(--hc-text);
+    background-color: var(--hc-bg);
+  }
+
+  .high-contrast * {
+    border-color: currentColor !important;
+  }
+
+  .high-contrast button,
+  .high-contrast a,
+  .high-contrast [role='button'] {
+    text-decoration: underline;
+    font-weight: 600;
+  }
+
+  .high-contrast input,
+  .high-contrast select,
+  .high-contrast textarea {
+    border-width: var(--hc-border) !important;
+  }
+}
+
+/* Reduced motion (Section 5.5.14) */
+@layer base {
+  .reduce-motion *,
+  .reduce-motion *::before,
+  .reduce-motion *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Respect OS-level prefers-reduced-motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Respect OS-level prefers-contrast */
+@media (prefers-contrast: more) {
+  :root:not(.high-contrast) {
+    /* Auto-enable high contrast if user hasn't explicitly toggled */
+  }
+}
