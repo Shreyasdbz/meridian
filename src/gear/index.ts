@@ -50,6 +50,64 @@ export type {
   GearHostConfig,
 } from './sandbox/gear-host.js';
 
+// Phase 10.4: Container sandbox (Level 3)
+export {
+  isDockerAvailable,
+  resetDockerCache,
+  buildDockerArgs,
+  createContainerSandbox,
+  destroyContainerSandbox,
+  execInContainer,
+  getContainerStats,
+} from './sandbox/container-sandbox.js';
+export type {
+  ContainerSandboxOptions,
+  ContainerSandboxLogger,
+  ContainerHandle,
+} from './sandbox/container-sandbox.js';
+
+// Phase 10.4: Isolate sandbox (Level 2)
+export {
+  isIsolatedVmAvailable,
+  resetIsolatedVmCache,
+  createIsolateSandbox,
+  executeInIsolate,
+  disposeIsolateSandbox,
+} from './sandbox/isolate-sandbox.js';
+export type {
+  IsolateSandboxOptions,
+  IsolateSandboxLogger,
+  IsolateHandle,
+  IsolateExecutionResult,
+} from './sandbox/isolate-sandbox.js';
+
+// Phase 10.4: Sandbox selector
+export { selectSandboxLevel } from './sandbox/sandbox-selector.js';
+export type {
+  SandboxLevel,
+  SandboxSelectionConfig,
+  SandboxSelectorLogger,
+  SandboxSelection,
+} from './sandbox/sandbox-selector.js';
+
+// Phase 10.5: Gear signing
+export {
+  computeContentHash,
+  signGear,
+  verifyGearSignature,
+  checkSignaturePolicy,
+  generateSigningKeypair,
+  canonicalizeManifest,
+  zeroPrivateKey,
+} from './signing.js';
+export type {
+  GearSigningPolicy,
+  GearSigningConfig,
+  GearSigningLogger,
+  SignatureResult,
+  VerificationResult,
+} from './signing.js';
+
 // Phase 5.3: Gear context — constrained API for Gear code inside the sandbox
 export {
   GearContextImpl,

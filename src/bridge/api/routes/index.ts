@@ -38,3 +38,9 @@ export type { CostRouteOptions } from './costs.js';
 
 export { updateRoutes } from './updates.js';
 export type { UpdateRouteOptions } from './updates.js';
+
+export { trustRoutes } from './trust.js';
+export type { TrustRouteOptions } from './trust.js';
+
+export { dataRoutes } from './data.js';
+export type { DataRouteOptions } from './data.js';

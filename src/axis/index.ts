@@ -97,6 +97,18 @@ export type {
   MaintenanceRunResult,
 } from './maintenance-basic.js';
 
+// Full idle maintenance (Phase 10.6)
+export { IdleMaintenance } from './maintenance.js';
+export type {
+  IdleMaintenanceLogger,
+  IdleMaintenanceOptions,
+  IdleMaintenanceResult,
+  IdleCheck,
+  StagedMemoryPromoter,
+  SentinelPruner,
+  BackupCreator,
+} from './maintenance.js';
+
 // Startup & shutdown lifecycle (Section 5.1.14)
 export { LifecycleManager } from './lifecycle.js';
 export type {
@@ -110,14 +122,23 @@ export type {
 } from './lifecycle.js';
 
 // Audit logging (Sections 6.6, 8.6)
-export { AuditLog, getAuditDbFileName } from './audit.js';
+export { AuditLog, getAuditDbFileName, computeEntryHash } from './audit.js';
 export type {
   AuditLogger,
   AuditLogOptions,
   AuditExportResult,
+  ChainVerificationResult,
   QueryAuditOptions,
   WriteAuditEntryOptions,
 } from './audit.js';
+
+// Encrypted backups (Phase 10.5)
+export { BackupManager, encrypt, decrypt, deriveKey } from './backup.js';
+export type {
+  BackupManagerOptions,
+  BackupLogger,
+  BackupResult,
+} from './backup.js';
 
 // Metrics collector (Section 12.2)
 export { MetricsCollector } from './metrics.js';

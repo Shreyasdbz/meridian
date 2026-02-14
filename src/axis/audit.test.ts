@@ -6,7 +6,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 
 import { DatabaseClient } from '@meridian/shared';
 
-import { AuditLog, getAuditDbFileName } from './audit.js';
+import { AuditLog, getAuditDbFileName, computeEntryHash } from './audit.js';
 
 // ---------------------------------------------------------------------------
 // Test setup — unique temp directory per test with direct-mode DatabaseClient
@@ -111,15 +111,18 @@ describe('AuditLog', () => {
       expect(entry1.id).not.toBe(entry2.id);
     });
 
-    it('should set integrity chain fields as undefined for v0.1', async () => {
+    it('should populate integrity chain fields (v0.3)', async () => {
       const entry = await auditLog.write({
         actor: 'axis',
         action: 'job.created',
         riskLevel: 'low',
       });
 
+      // First entry has no previous hash
       expect(entry.previousHash).toBeUndefined();
-      expect(entry.entryHash).toBeUndefined();
+      // But it should have an entry hash
+      expect(entry.entryHash).toBeDefined();
+      expect(entry.entryHash).toMatch(/^[0-9a-f]{64}$/);
     });
 
     it('should persist entries to the database and retrieve them', async () => {
@@ -413,6 +416,276 @@ describe('AuditLog', () => {
       expect(entry.target).toBe('/workspace/file.txt');
       expect(entry.jobId).toBe('job-export');
       expect(entry.details).toEqual({ bytes: 512 });
+    });
+  });
+
+  describe('integrity chain (Phase 10.5)', () => {
+    it('should set previousHash to undefined for the first entry', async () => {
+      const entry = await auditLog.write({
+        actor: 'axis',
+        action: 'first.entry',
+        riskLevel: 'low',
+      });
+
+      expect(entry.previousHash).toBeUndefined();
+      expect(entry.entryHash).toBeDefined();
+    });
+
+    it('should chain entries via previousHash', async () => {
+      const first = await auditLog.write({
+        actor: 'axis',
+        action: 'chain.first',
+        riskLevel: 'low',
+      });
+      const second = await auditLog.write({
+        actor: 'axis',
+        action: 'chain.second',
+        riskLevel: 'low',
+      });
+
+      // Second entry's previousHash should match first entry's entryHash
+      expect(second.previousHash).toBe(first.entryHash);
+    });
+
+    it('should produce valid SHA-256 hex hashes', async () => {
+      const entry = await auditLog.write({
+        actor: 'sentinel',
+        action: 'plan.validated',
+        riskLevel: 'medium',
+      });
+
+      expect(entry.entryHash).toMatch(/^[0-9a-f]{64}$/);
+    });
+
+    it('should produce deterministic hashes for the same content', async () => {
+      const entry = await auditLog.write({
+        actor: 'axis',
+        action: 'deterministic.test',
+        riskLevel: 'low',
+      });
+
+      // Recompute the hash and verify it matches
+      const recomputed = computeEntryHash(entry);
+      expect(entry.entryHash).toBe(recomputed);
+    });
+
+    it('should produce unique hashes for different entries', async () => {
+      const first = await auditLog.write({
+        actor: 'axis',
+        action: 'unique.first',
+        riskLevel: 'low',
+      });
+      const second = await auditLog.write({
+        actor: 'axis',
+        action: 'unique.second',
+        riskLevel: 'low',
+      });
+
+      expect(first.entryHash).not.toBe(second.entryHash);
+    });
+
+    it('should persist chain fields to the database', async () => {
+      const written = await auditLog.write({
+        actor: 'axis',
+        action: 'persist.chain',
+        riskLevel: 'low',
+        details: { test: true },
+      });
+
+      const retrieved = defined(await auditLog.getById(written.id), 'retrieved entry');
+      expect(retrieved.entryHash).toBe(written.entryHash);
+      expect(retrieved.previousHash).toBe(written.previousHash);
+    });
+
+    it('should build a valid chain of 5 entries', async () => {
+      const entries = [];
+      for (let i = 0; i < 5; i++) {
+        entries.push(
+          await auditLog.write({
+            actor: 'axis',
+            action: `chain.entry.${i}`,
+            riskLevel: 'low',
+          }),
+        );
+      }
+
+      // Verify linkage
+      for (let i = 1; i < entries.length; i++) {
+        const current = entries[i] as (typeof entries)[number];
+        const previous = entries[i - 1] as (typeof entries)[number];
+        expect(current.previousHash).toBe(previous.entryHash);
+      }
+
+      // Verify first has no previous
+      const first = entries[0] as (typeof entries)[number];
+      expect(first.previousHash).toBeUndefined();
+    });
+  });
+
+  describe('verifyChain (Phase 10.5)', () => {
+    it('should verify an empty database as valid', async () => {
+      const result = await auditLog.verifyChain();
+      expect(result.valid).toBe(true);
+      expect(result.entriesChecked).toBe(0);
+    });
+
+    it('should verify a single entry as valid', async () => {
+      await auditLog.write({
+        actor: 'axis',
+        action: 'single.entry',
+        riskLevel: 'low',
+      });
+
+      const result = await auditLog.verifyChain();
+      expect(result.valid).toBe(true);
+      expect(result.entriesChecked).toBe(1);
+    });
+
+    it('should verify a chain of multiple entries as valid', async () => {
+      for (let i = 0; i < 10; i++) {
+        await auditLog.write({
+          actor: i % 2 === 0 ? 'axis' : 'scout',
+          action: `verify.chain.${i}`,
+          riskLevel: i > 7 ? 'high' : 'low',
+          details: { index: i },
+        });
+      }
+
+      const result = await auditLog.verifyChain();
+      expect(result.valid).toBe(true);
+      expect(result.entriesChecked).toBe(10);
+    });
+
+    it('should detect a tampered entryHash', async () => {
+      // Write 3 entries
+      await auditLog.write({ actor: 'axis', action: 'a', riskLevel: 'low' });
+      const second = await auditLog.write({ actor: 'axis', action: 'b', riskLevel: 'low' });
+      await auditLog.write({ actor: 'axis', action: 'c', riskLevel: 'low' });
+
+      // Directly tamper with the second entry's hash in the database
+      const key = `audit-${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+      await db.run(
+        key as 'meridian',
+        `UPDATE audit_entries SET entry_hash = 'tampered' WHERE id = ?`,
+        [second.id],
+      );
+
+      const result = await auditLog.verifyChain();
+      expect(result.valid).toBe(false);
+      expect(result.brokenAt).toBeDefined();
+      const brokenAt = result.brokenAt as NonNullable<typeof result.brokenAt>;
+      expect(brokenAt.index).toBe(1);
+      expect(brokenAt.reason).toContain('entryHash mismatch');
+    });
+
+    it('should detect a tampered previousHash', async () => {
+      await auditLog.write({ actor: 'axis', action: 'a', riskLevel: 'low' });
+      const second = await auditLog.write({ actor: 'axis', action: 'b', riskLevel: 'low' });
+      await auditLog.write({ actor: 'axis', action: 'c', riskLevel: 'low' });
+
+      // Tamper with the second entry's previousHash
+      const key = `audit-${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+      await db.run(
+        key as 'meridian',
+        `UPDATE audit_entries SET previous_hash = 'tampered' WHERE id = ?`,
+        [second.id],
+      );
+
+      const result = await auditLog.verifyChain();
+      expect(result.valid).toBe(false);
+      expect(result.brokenAt).toBeDefined();
+      const brokenAt = result.brokenAt as NonNullable<typeof result.brokenAt>;
+      expect(brokenAt.index).toBe(1);
+      expect(brokenAt.reason).toContain('previousHash mismatch');
+    });
+
+    it('should only provide write, read, and verify operations (no update/delete)', () => {
+      const proto = Object.getOwnPropertyNames(Object.getPrototypeOf(auditLog));
+      const mutating = proto.filter(
+        (name) =>
+          name.toLowerCase().includes('update') ||
+          name.toLowerCase().includes('delete') ||
+          name.toLowerCase().includes('remove'),
+      );
+      expect(mutating).toHaveLength(0);
+
+      // verifyChain should exist
+      expect(typeof auditLog.verifyChain).toBe('function');
+    });
+  });
+
+  describe('computeEntryHash', () => {
+    it('should produce a 64-char hex string', () => {
+      const hash = computeEntryHash({
+        id: 'test-id',
+        timestamp: '2026-02-14T00:00:00.000Z',
+        actor: 'axis',
+        action: 'test',
+        riskLevel: 'low',
+      });
+
+      expect(hash).toMatch(/^[0-9a-f]{64}$/);
+    });
+
+    it('should be deterministic for the same input', () => {
+      const entry = {
+        id: 'test-id',
+        timestamp: '2026-02-14T00:00:00.000Z',
+        actor: 'axis' as const,
+        action: 'test',
+        riskLevel: 'low' as const,
+      };
+
+      const hash1 = computeEntryHash(entry);
+      const hash2 = computeEntryHash(entry);
+      expect(hash1).toBe(hash2);
+    });
+
+    it('should produce different hashes for different entries', () => {
+      const hash1 = computeEntryHash({
+        id: 'id-1',
+        timestamp: '2026-02-14T00:00:00.000Z',
+        actor: 'axis',
+        action: 'test',
+        riskLevel: 'low',
+      });
+      const hash2 = computeEntryHash({
+        id: 'id-2',
+        timestamp: '2026-02-14T00:00:00.000Z',
+        actor: 'axis',
+        action: 'test',
+        riskLevel: 'low',
+      });
+
+      expect(hash1).not.toBe(hash2);
+    });
+
+    it('should exclude entryHash from the computation', () => {
+      const entry = {
+        id: 'test-id',
+        timestamp: '2026-02-14T00:00:00.000Z',
+        actor: 'axis' as const,
+        action: 'test',
+        riskLevel: 'low' as const,
+      };
+
+      const hashWithout = computeEntryHash(entry);
+      const hashWith = computeEntryHash({ ...entry, entryHash: 'some-hash-value' });
+      expect(hashWithout).toBe(hashWith);
+    });
+
+    it('should include previousHash in the computation', () => {
+      const entry = {
+        id: 'test-id',
+        timestamp: '2026-02-14T00:00:00.000Z',
+        actor: 'axis' as const,
+        action: 'test',
+        riskLevel: 'low' as const,
+      };
+
+      const hashNoPrev = computeEntryHash(entry);
+      const hashWithPrev = computeEntryHash({ ...entry, previousHash: 'abc123' });
+      expect(hashNoPrev).not.toBe(hashWithPrev);
     });
   });
 });

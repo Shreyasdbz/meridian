@@ -5,6 +5,91 @@ All notable changes to the Meridian project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-02-14
+
+Memory & Learning: Journal memory system, Sentinel Memory, container sandboxing, encrypted backups, data retention, and the memory browser UI.
+
+### Added
+
+#### Journal Memory System (`src/journal/`)
+- `MemoryStore` class for episodic, semantic, and procedural memory CRUD (Phase 10.1)
+- `EmbeddingStore` with sqlite-vec for vector search and pure-JS cosine similarity fallback
+- `HybridRetrieval` combining semantic (KNN) + keyword (FTS5) search with Reciprocal Rank Fusion
+- Embedding providers for Ollama (`nomic-embed-text`) and OpenAI API
+- `Reflector` for LLM-based post-task analysis with 6-question reflection (Phase 10.2)
+- PII reduction: 2-pass pipeline (regex patterns + LLM review), 85-92% recall
+- Instruction/data classifier to detect imperative content in external data
+- `MemoryWriter` for writing reflection results to memory stores with contradiction detection
+- `GearSuggester` producing structured Gear briefs (descriptions, not code) from repeated patterns
+- Memory staging: 24-hour review period before new memories are promoted
+- Versioned reflection prompts (`reflection-v1.ts`)
+
+#### Sentinel Memory (`src/sentinel/`)
+- `SentinelMemory` class for storing/retrieving trust decisions (Phase 10.3)
+- Matching semantics: exact action type, file prefix (directory boundaries), network domain, financial numeric comparison
+- Shell commands (`shell.execute`, `shell.run`, `shell.exec`) excluded from persistent memory
+- Cap enforcement: 500 active decisions max, oldest evicted on overflow
+- REST API for trust decision management (`GET/DELETE /api/trust/decisions`)
+- Trust settings UI section in Bridge settings page
+
+#### Container Sandbox (`src/gear/sandbox/`)
+- Level 3 Docker container sandbox with `--read-only`, `--network=none`, memory/CPU/pids limits (Phase 10.4)
+- Tmpfs for `/tmp` (noexec) and `/secrets` (noexec, nosuid)
+- Workspace mounted read-only
+- Level 2 `isolated-vm` sandbox (optional dependency) with V8-level isolation
+- `SandboxSelector` for automatic sandbox level selection based on manifest and availability
+
+#### Gear Signing (`src/gear/signing.ts`)
+- Ed25519 signature of canonical manifest + code SHA-256 (Phase 10.5)
+- Signing policy: `require` | `warn` | `allow` (default: `allow` in v0.3)
+- Canonical manifest JSON with sorted keys (excludes signature field)
+
+#### Encrypted Backups (`src/axis/backup.ts`)
+- `BackupManager` with AES-256-GCM encryption (Phase 10.5)
+- Backup rotation: 7 daily / 4 weekly / 3 monthly
+- Safety backup before restore operations
+
+#### Audit Integrity Chain (`src/axis/audit.ts`)
+- SHA-256 hash chain on audit entries via `previousHash`/`entryHash` (Phase 10.5)
+- `verifyChain()` for tamper detection across monthly partitions
+- `computeEntryHash()` exported for external verification
+
+#### Data Retention & Deletion (`src/shared/`)
+- `applyRetention()` for time-based data cleanup: conversations >90d, episodes >90d, execution logs >30d (Phase 10.6)
+- `deleteAllUserData()` for right-to-deletion: purges all user data, retains audit logs and auth credentials
+- `POST /api/data/delete-all` Bridge endpoint with confirmation requirement
+
+#### Idle Maintenance (`src/axis/maintenance.ts`)
+- `IdleMaintenance` extending `BasicMaintenance` with Journal-aware tasks (Phase 10.6)
+- FTS5 OPTIMIZE (every 7 days), staged memory promotion, Sentinel pruning
+- Retention enforcement and backup creation during idle periods
+- Only runs when no active jobs (idle check callback)
+
+#### Memory Browser UI (`src/bridge/ui/pages/memory/`)
+- Memory browser page with tabs (All/Episodic/Semantic/Procedural) (Phase 10.7)
+- Search, edit, delete, export (JSON/Markdown), and pause/resume toggle
+- Memory card component with type badges and action buttons
+- Zustand store for memory browser state
+
+### Fixed
+- PII reduction Pass 2 (LLM review) now correctly receives provider/model in Reflector — previously only regex pass ran
+- FTS5 keyword search now uses actual rank values instead of array index for scoring
+- Reflection prompt questions aligned with architecture Section 5.4.3 six-question framework
+- `GearBrief` interface now includes `manifestSkeleton` and `pseudocode` optional fields per architecture spec
+- `deleteAllUserData()` now deletes the secrets vault file
+- Idle maintenance FTS rebuild interval derived from shared `FTS_REBUILD_INTERVAL_DAYS` constant
+- Trust decision routes (`/api/trust/decisions`) and data deletion route (`/api/data/delete-all`) registered in Fastify server
+
+### Changed
+- Audit log now populates `previousHash` and `entryHash` fields (previously undefined)
+- Axis index exports extended with backup, maintenance, and audit integrity types
+
+### Security
+- Container escape prevention: read-only root FS, network isolation, pids limit, no-new-privileges
+- Information barrier enforced: Sentinel Memory isolated in `sentinel.db`
+- Expanded prompt injection test suite: memory poisoning, indirect injection, Sentinel bypass, instruction/data confusion
+- PII reduction prominently documented as NOT a security guarantee (85-92% recall)
+
 ## [0.2.0] - 2026-02-13
 
 Safety upgrades, cron scheduling, cost tracking, DAG execution, and additional Gear for v0.2.
@@ -189,5 +274,6 @@ Initial release of Meridian — a self-hosted AI assistant platform with autonom
 - Credential pattern redaction in all log output
 - Shell Gear disabled by default and exempt from auto-approval
 
+[0.3.0]: https://github.com/meridian-ai/meridian/commits/v0.3.0
 [0.2.0]: https://github.com/meridian-ai/meridian/commits/v0.2.0
 [0.1.0]: https://github.com/meridian-ai/meridian/commits/v0.1.0

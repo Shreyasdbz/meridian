@@ -47,6 +47,8 @@ import {
   metricsRoutes,
   scheduleRoutes,
   costRoutes,
+  trustRoutes,
+  dataRoutes,
 } from './routes/index.js';
 import { buildHstsHeader, buildHttpsOptions, shouldAddHsts } from './tls.js';
 import { type WebSocketManager, websocketRoutes } from './websocket.js';
@@ -140,6 +142,16 @@ export function detectSystemPromptLeakage(text: string): string | undefined {
 // Server creation
 // ---------------------------------------------------------------------------
 
+/**
+ * Structural interface for Sentinel Memory (avoids bridge → sentinel import).
+ * Compatible with SentinelMemory from @meridian/sentinel.
+ */
+export interface SentinelMemoryLike {
+  listActiveDecisions(): Promise<Array<Record<string, unknown>>>;
+  deleteDecision(id: string): Promise<void>;
+  pruneExpired(): Promise<number>;
+}
+
 export interface CreateServerOptions {
   config: BridgeConfig;
   db: DatabaseClient;
@@ -156,6 +168,10 @@ export interface CreateServerOptions {
   metricsProvider?: MetricsProvider;
   /** Cost tracker for /api/costs endpoints (opt-in). */
   costTracker?: CostTracker;
+  /** Sentinel Memory instance for trust decision routes (Phase 10.3). */
+  sentinelMemory?: SentinelMemoryLike;
+  /** Data directory for right-to-deletion route (Phase 10.6). */
+  dataDir?: string;
   /** Application version string (e.g. "0.1.0"). */
   version?: string;
   /** Callback to check if the server has completed full startup. */
@@ -175,7 +191,7 @@ export async function createServer(options: CreateServerOptions): Promise<{
   authService: AuthService;
   wsManager: WebSocketManager;
 }> {
-  const { config, db, logger, rateLimitMax, disableRateLimit, auditLog, vault, metricsProvider, costTracker, version, isReady, getComponentStatus, maxWsConnections } = options;
+  const { config, db, logger, rateLimitMax, disableRateLimit, auditLog, vault, metricsProvider, costTracker, sentinelMemory, dataDir, version, isReady, getComponentStatus, maxWsConnections } = options;
 
   // ----- TLS (Phase 9.7) -----
   const httpsOptions = buildHttpsOptions(config, logger);
@@ -309,6 +325,15 @@ export async function createServer(options: CreateServerOptions): Promise<{
 
   if (costTracker) {
     costRoutes(server, { costTracker, logger });
+  }
+
+  if (sentinelMemory) {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-explicit-any -- structural type bridging (avoids bridge → sentinel import)
+    trustRoutes(server, { sentinelMemory: sentinelMemory as any, logger });
+  }
+
+  if (dataDir) {
+    dataRoutes(server, { db, dataDir, logger });
   }
 
   // ----- WebSocket routes (Phase 6.3) -----

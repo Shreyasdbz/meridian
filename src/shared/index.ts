@@ -316,3 +316,19 @@ export {
   KeyRegistry,
   SigningService,
 } from './signing.js';
+
+// Data retention (Phase 10.6)
+export { applyRetention, computeCutoffDate } from './retention.js';
+export type {
+  RetentionLogger,
+  RetentionOptions,
+  RetentionResult,
+} from './retention.js';
+
+// Right to deletion (Phase 10.6)
+export { deleteAllUserData } from './data-deletion.js';
+export type {
+  DataDeletionLogger,
+  DataDeletionOptions,
+  DataDeletionResult,
+} from './data-deletion.js';

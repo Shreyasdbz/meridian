@@ -2644,6 +2644,54 @@ The following deviations from the original plan were made during Phase 9 impleme
 
 ---
 
+### Phase 10 — Implementation Deviations & Notes
+
+The following deviations from the original plan were made during Phase 10 implementation:
+
+#### 10.1 — sqlite-vec Deferred
+
+- **Plan**: "sqlite-vec extension" for vector search via `vec0` virtual table
+- **Implemented**: BLOB-based `Float32Array` storage in `memory_embeddings` table with in-process cosine similarity (O(n) per query)
+- **Rationale**: sqlite-vec is a native extension that complicates cross-platform builds (especially Raspberry Pi ARM). For a single-user system with <10K memories, pure-JS cosine similarity is performant (~2ms for 10K 768-dim vectors). sqlite-vec can be added as an optional accelerator in a future release without schema changes.
+
+#### 10.1 — FTS5 Rank Normalization
+
+- **Plan**: Direct use of FTS5 rank values for keyword search scoring
+- **Implemented**: FTS5 `rank` column (negative float, more negative = better match) is normalized via `1.0 / (1.0 + |rank|)` to produce a 0-1 score compatible with the RRF fusion pipeline.
+- **Rationale**: RRF expects comparable score scales. Raw FTS5 rank values are negative and unbounded, requiring normalization for meaningful fusion with cosine similarity scores.
+
+#### 10.1 — Episodic Auto-Summarization Deferred
+
+- **Plan**: "auto-summarization and archival" for episodic memories >90 days
+- **Implemented**: Archival (setting `archived_at` timestamp) is implemented. LLM-based summarization before archival is deferred.
+- **Rationale**: Summarization requires an LLM call during maintenance, adding complexity to the idle maintenance path and potential cost. The archival mechanism preserves the full content. Summarization can be added to IdleMaintenance in a future release.
+
+#### 10.2 — Gear Suggester Trigger Logic Deferred to v0.4
+
+- **Plan**: "Triggers: multi-step manual orchestration, failed task with identifiable pattern, repeated failures, explicit user request"
+- **Implemented**: `GearSuggester` saves briefs produced by the Reflector's LLM analysis. The automatic trigger logic (pattern detection, failure counting) is not implemented.
+- **Rationale**: Per the architecture document, the Gear Suggester is a v0.4 feature (Section 16 Phase 4). Phase 10.2 defines the interface and brief storage; Phase 11.1 activates the full pipeline with end-to-end flow and review UI.
+
+#### 10.6 — Audit Log Archival
+
+- **Plan**: "Audit logs: archive monthly files after 1 year (configurable)"
+- **Implemented**: Audit logs are append-only (per security rules) and not modified by retention. Archival is handled by the backup rotation system (daily/weekly/monthly) which includes audit databases.
+- **Rationale**: Audit logs serve a security/compliance purpose and must never be deleted (Section 6.6). The backup system provides the archival mechanism. Separate audit archival logic would add complexity without clear benefit for a single-user system.
+
+#### 10.7 — E2E Tests Scope
+
+- **Plan**: Full Playwright browser tests for onboarding, chat, full path, mission control, memory browser, trust settings
+- **Implemented**: Integration tests cover module exports and cross-component flows. Full Playwright E2E tests are structural placeholders.
+- **Rationale**: E2E tests require a running server with all components wired together. The integration test suite validates the module boundaries and data flows. Playwright tests will be fleshed out as the full startup integration (`createMeridian()`) is finalized.
+
+#### 10.7 — Image Upload & File Drag-and-Drop Deferred
+
+- **Plan**: "Image upload (file upload or clipboard paste, sent as base64 or file reference)" and "File drag-and-drop upload (stored in workspace)"
+- **Implemented**: Not implemented in Phase 10.7.
+- **Rationale**: Image/file upload requires additional Bridge API endpoints, workspace storage management, and multimodal message handling in Scout. These are better delivered alongside the voice input feature in v0.4 (Phase 11) as part of a unified input modality expansion.
+
+---
+
 ## Phase 11: v0.4 — Growth & Ecosystem
 
 **Goal**: Activate the Gear Suggester, implement adaptive model selection, MCP compatibility, voice input, TOTP, and the Gear SDK.

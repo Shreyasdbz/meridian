@@ -8,8 +8,9 @@
 // - synchronous = FULL on audit databases (crash must never lose an entry)
 // - Write-ahead audit: entry written BEFORE committing the primary action
 // - Monthly partitioning: current month is the write target
-// - Integrity chain fields (previousHash, entryHash) defined but populated in v0.3
+// - Integrity chain: SHA-256 hash chain (previousHash, entryHash) for tamper detection
 
+import { createHash } from 'node:crypto';
 import { resolve } from 'node:path';
 
 import { generateId } from '@meridian/shared';
@@ -173,6 +174,55 @@ function rowToEntry(row: AuditEntryRow): AuditEntry {
 }
 
 // ---------------------------------------------------------------------------
+// Integrity chain helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Compute the SHA-256 hash for an audit entry.
+ *
+ * The hash covers the canonical JSON representation of the entry,
+ * EXCLUDING the `entryHash` field itself (since that's what we're computing).
+ * This creates a hash chain: each entry's hash incorporates the previous
+ * entry's hash via the `previousHash` field.
+ */
+export function computeEntryHash(entry: AuditEntry): string {
+  // Build a canonical representation excluding entryHash
+  const canonical: Record<string, unknown> = {
+    id: entry.id,
+    timestamp: entry.timestamp,
+    actor: entry.actor,
+    action: entry.action,
+    riskLevel: entry.riskLevel,
+  };
+
+  if (entry.actorId !== undefined) canonical['actorId'] = entry.actorId;
+  if (entry.target !== undefined) canonical['target'] = entry.target;
+  if (entry.jobId !== undefined) canonical['jobId'] = entry.jobId;
+  if (entry.previousHash !== undefined) canonical['previousHash'] = entry.previousHash;
+  if (entry.details !== undefined) canonical['details'] = entry.details;
+
+  // Sort keys for deterministic JSON
+  const json = JSON.stringify(canonical, Object.keys(canonical).sort());
+  return createHash('sha256').update(json).digest('hex');
+}
+
+/**
+ * Result of verifying an audit integrity chain.
+ */
+export interface ChainVerificationResult {
+  /** Whether the entire chain is valid. */
+  valid: boolean;
+  /** Total entries checked. */
+  entriesChecked: number;
+  /** The first broken link, if any. */
+  brokenAt?: {
+    entryId: string;
+    index: number;
+    reason: string;
+  };
+}
+
+// ---------------------------------------------------------------------------
 // AuditLog
 // ---------------------------------------------------------------------------
 
@@ -252,6 +302,23 @@ export class AuditLog {
   }
 
   // -------------------------------------------------------------------------
+  // Integrity chain helpers
+  // -------------------------------------------------------------------------
+
+  /**
+   * Get the entryHash of the most recent audit entry in this month's database.
+   * Returns undefined if no entries exist (i.e. this is the first entry).
+   */
+  private async getLastEntryHash(key: DatabaseName): Promise<string | undefined> {
+    const rows = await this.db.query<{ entry_hash: string | null }>(
+      key,
+      `SELECT entry_hash FROM audit_entries ORDER BY timestamp DESC, id DESC LIMIT 1`,
+    );
+
+    return rows[0]?.entry_hash ?? undefined;
+  }
+
+  // -------------------------------------------------------------------------
   // Write (append-only)
   // -------------------------------------------------------------------------
 
@@ -271,6 +338,9 @@ export class AuditLog {
     const now = new Date();
     const key = await this.ensureMonth(now);
 
+    // Get the previous entry's hash for the integrity chain
+    const previousHash = await this.getLastEntryHash(key);
+
     const entry: AuditEntry = {
       id: generateId(),
       timestamp: now.toISOString(),
@@ -280,11 +350,13 @@ export class AuditLog {
       actorId: options.actorId,
       target: options.target,
       jobId: options.jobId,
-      // Integrity chain fields defined but not populated until v0.3
-      previousHash: undefined,
-      entryHash: undefined,
+      previousHash,
+      entryHash: undefined, // computed below
       details: options.details,
     };
+
+    // Compute the entry hash (SHA-256 of canonical JSON excluding entryHash)
+    entry.entryHash = computeEntryHash(entry);
 
     await this.db.run(
       key,
@@ -449,5 +521,76 @@ export class AuditLog {
 
     const entries = rows.map(rowToEntry);
     return { entryCount: entries.length, entries };
+  }
+
+  // -------------------------------------------------------------------------
+  // Integrity verification (Section 6.6)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Verify the integrity of the hash chain for a specific month.
+   *
+   * Reads all entries in chronological order and checks:
+   * 1. Each entry's `entryHash` matches the recomputed hash
+   * 2. Each entry's `previousHash` matches the preceding entry's `entryHash`
+   * 3. The first entry's `previousHash` is undefined/null
+   *
+   * Returns a result indicating whether the chain is valid and, if not,
+   * where the first break was detected.
+   */
+  async verifyChain(date: Date = new Date()): Promise<ChainVerificationResult> {
+    const key = await this.ensureMonth(date);
+
+    const rows = await this.db.query<AuditEntryRow>(
+      key,
+      `SELECT id, timestamp, actor, actor_id, action, risk_level, target,
+              job_id, previous_hash, entry_hash, details
+       FROM audit_entries
+       ORDER BY timestamp ASC, id ASC`,
+    );
+
+    const entries = rows.map(rowToEntry);
+
+    if (entries.length === 0) {
+      return { valid: true, entriesChecked: 0 };
+    }
+
+    let previousHash: string | undefined;
+
+    for (let i = 0; i < entries.length; i++) {
+      const entry = entries[i];
+      if (!entry) continue;
+
+      // Check previousHash linkage
+      if (entry.previousHash !== previousHash) {
+        return {
+          valid: false,
+          entriesChecked: i + 1,
+          brokenAt: {
+            entryId: entry.id,
+            index: i,
+            reason: `previousHash mismatch at index ${i}: expected '${previousHash ?? 'null'}', got '${entry.previousHash ?? 'null'}'`,
+          },
+        };
+      }
+
+      // Recompute and verify entryHash
+      const recomputed = computeEntryHash(entry);
+      if (entry.entryHash !== recomputed) {
+        return {
+          valid: false,
+          entriesChecked: i + 1,
+          brokenAt: {
+            entryId: entry.id,
+            index: i,
+            reason: `entryHash mismatch at index ${i}: stored '${entry.entryHash ?? 'null'}', computed '${recomputed}'`,
+          },
+        };
+      }
+
+      previousHash = entry.entryHash;
+    }
+
+    return { valid: true, entriesChecked: entries.length };
   }
 }

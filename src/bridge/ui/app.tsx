@@ -6,6 +6,7 @@ import { Spinner } from './components/spinner.js';
 import { ThemeProvider } from './components/theme-provider.js';
 import { api } from './hooks/use-api.js';
 import { LoginPage } from './pages/login.js';
+import { MemoryBrowser } from './pages/memory/index.js';
 import { OnboardingWizard } from './pages/onboarding/index.js';
 import { useAuthStore } from './stores/auth-store.js';
 import { useConversationStore } from './stores/conversation-store.js';
@@ -73,6 +74,7 @@ export function App() {
             <Route path="/" element={<Layout />}>
               {/* Phase 7.3: Chat routes */}
               {/* Phase 7.4: Mission Control routes */}
+              <Route path="memory" element={<MemoryBrowser />} />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

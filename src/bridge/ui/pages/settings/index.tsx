@@ -15,6 +15,7 @@ import { SameProviderWarning } from './same-provider-warning.js';
 import { SessionSection } from './session-section.js';
 import { ShellGearSection } from './shell-gear-section.js';
 import { TrustProfileSection } from './trust-profile-section.js';
+import { TrustSettingsSection } from './trust-settings-section.js';
 
 // ---------------------------------------------------------------------------
 // Props
@@ -79,6 +80,9 @@ export function SettingsPage({ onClose }: SettingsPageProps): React.ReactElement
 
             {/* Trust profile (Section 5.5.3) */}
             <TrustProfileSection />
+
+            {/* Trust decisions — Sentinel Memory (Section 5.3.8) */}
+            <TrustSettingsSection />
 
             {/* Shell Gear (Section 5.6.5) */}
             <ShellGearSection />

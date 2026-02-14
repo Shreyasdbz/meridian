@@ -40,6 +40,15 @@ export { routeVerdict, processUserApproval } from './approval.js';
 export type { StrippedExecutionPlan, StrippedExecutionStep } from './plan-stripper.js';
 export { stripPlan, stripStep } from './plan-stripper.js';
 
+// Sentinel Memory (Phase 10.3)
+export { SentinelMemory, matchFileScope, matchNetworkScope, matchFinancialScope } from './memory.js';
+export type {
+  SentinelMemoryOptions,
+  SentinelMemoryLogger,
+  StoreDecisionOptions,
+  MatchResult,
+} from './memory.js';
+
 // LLM validator (Phase 9.1)
 export type {
   LLMValidatorConfig,

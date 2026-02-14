@@ -1,6 +1,6 @@
 {
   "name": "meridian",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "description": "Open-source, self-hosted AI assistant platform for low-power devices",
   "type": "module",
   "license": "Apache-2.0",

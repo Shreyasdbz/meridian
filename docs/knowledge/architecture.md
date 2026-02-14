@@ -1334,6 +1334,8 @@ interface MemoryResult {
 }
 ```
 
+> **Implementation note (v0.3)**: The `sqlite-vec` extension is deferred. Embeddings are stored as BLOB-encoded `Float32Array` in a standard `memory_embeddings` table, with in-process cosine similarity for search. This avoids cross-platform native extension builds (particularly on ARM/Raspberry Pi) and is performant for single-user scale (<10K memories, ~2ms per search). The `sqlite-vec` extension can be added as an optional accelerator without schema changes.
+
 #### 5.4.6 User Transparency
 
 All memories are visible and manageable by the user through Bridge:
