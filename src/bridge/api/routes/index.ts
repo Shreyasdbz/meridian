@@ -35,3 +35,6 @@ export type { ScheduleRouteOptions } from './schedules.js';
 
 export { costRoutes } from './costs.js';
 export type { CostRouteOptions } from './costs.js';
+
+export { updateRoutes } from './updates.js';
+export type { UpdateRouteOptions } from './updates.js';

@@ -72,6 +72,10 @@ export interface SecurityConfig {
   requireApprovalFor: string[];
 }
 
+export interface EncryptionToggleConfig {
+  enabled: boolean;
+}
+
 export interface MeridianConfig {
   axis: AxisConfig;
   scout: ScoutConfig;
@@ -79,6 +83,7 @@ export interface MeridianConfig {
   journal: JournalConfig;
   bridge: BridgeConfig;
   security: SecurityConfig;
+  encryption?: EncryptionToggleConfig;
 }
 
 /** Deep partial type that preserves arrays as-is. */
@@ -141,6 +146,9 @@ export function getDefaultConfig(tier: DeploymentTier): MeridianConfig {
     security: {
       dailyCostLimitUsd: DEFAULT_DAILY_COST_LIMIT_USD,
       requireApprovalFor: ['file.delete', 'shell.execute', 'network.post', 'message.send'],
+    },
+    encryption: {
+      enabled: false,
     },
   };
 }
