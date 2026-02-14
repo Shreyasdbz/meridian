@@ -82,6 +82,24 @@ function BriefCard({ brief, onDismiss, onDelete, isExpanded, onToggle }: BriefCa
             <Button
               variant="ghost"
               size="sm"
+              disabled
+              title="Implement from brief (coming soon)"
+              aria-label="Implement from brief"
+            >
+              Implement
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled
+              title="Refine brief (coming soon)"
+              aria-label="Refine brief"
+            >
+              Refine
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={() => { onDismiss(brief.id); }}
               aria-label="Dismiss brief"
             >

@@ -4,7 +4,7 @@
 // 1. Load config and init logging → liveness probe
 // 2. Open databases, run migrations
 // 3. Axis core startup
-// 4. Register Scout, Sentinel, Journal (stub), built-in Gear
+// 4. Register Scout, Sentinel, Journal, built-in Gear
 // 5. Crash recovery
 // 6. Bridge startup → readiness probe
 // 7. Begin processing queue
@@ -24,6 +24,14 @@ import { createBridgeServer } from '@meridian/bridge';
 import type { BridgeServer } from '@meridian/bridge';
 import { createGearRuntime, loadBuiltinManifests } from '@meridian/gear';
 import type { GearRuntime } from '@meridian/gear';
+import {
+  createJournal,
+  GearSuggester,
+  MemoryStore,
+  MemoryWriter,
+  Reflector,
+} from '@meridian/journal';
+import type { Journal } from '@meridian/journal';
 import { createScout } from '@meridian/scout';
 import type { Scout } from '@meridian/scout';
 import { createSentinel } from '@meridian/sentinel';
@@ -71,7 +79,7 @@ export interface PipelineProcessorOptions {
 /**
  * Create the job processor that orchestrates the full request lifecycle:
  * Ingestion → Scout (planning) → Sentinel (validation) → Approval →
- * Gear (execution) → Response → Reflection (stub).
+ * Gear (execution) → Response → Reflection (Journal).
  *
  * The processor is the callback passed to Axis's WorkerPool. When a job
  * is claimed from the queue, the processor drives it through the pipeline.
@@ -684,6 +692,7 @@ export async function startMeridian(options?: {
   axis: Axis;
   scout: Scout;
   sentinel: Sentinel;
+  journal: Journal;
   gearRuntime: GearRuntime;
   bridge: BridgeServer;
   shutdown: () => Promise<void>;
@@ -726,6 +735,8 @@ export async function startMeridian(options?: {
   await db.start();
   await db.open('meridian');
   await migrate(db, 'meridian', projectRoot);
+  await db.open('journal');
+  await migrate(db, 'journal', projectRoot);
 
   logger.info('Database initialized');
 
@@ -760,7 +771,7 @@ export async function startMeridian(options?: {
   logger.info('Axis runtime started');
 
   // -------------------------------------------------------------------------
-  // Step 4: Register Scout, Sentinel, Journal (stub), built-in Gear
+  // Step 4: Register Scout, Sentinel, Journal, built-in Gear
   // -------------------------------------------------------------------------
 
   // Scout — requires an LLM provider
@@ -819,12 +830,25 @@ export async function startMeridian(options?: {
     { registry: axis.internals.registry },
   );
 
-  // Journal — stub for v0.1 (conversation history only, stored in messages table)
-  logger.info('Journal stub initialized (v0.1 — conversation history only)');
+  // Journal — full memory pipeline (Phase 11.1: Gear Suggester activation)
+  const memoryStore = new MemoryStore({ db, logger });
+  const reflector = new Reflector({
+    provider,
+    model: config.scout.models.primary,
+    logger,
+  });
+  const memoryWriter = new MemoryWriter({ memoryStore, logger });
+  const gearSuggester = new GearSuggester({ workspaceDir: workspacePath, logger });
+
+  const journal = createJournal(
+    { reflector, memoryWriter, gearSuggester, logger },
+    { registry: axis.internals.registry },
+  );
 
   logger.info('Components registered', {
     scout: axis.internals.registry.has('scout'),
     sentinel: axis.internals.registry.has('sentinel'),
+    journal: axis.internals.registry.has('journal'),
     gear: axis.internals.registry.has('gear:runtime'),
   });
 
@@ -879,6 +903,7 @@ export async function startMeridian(options?: {
     // 3. Dispose components (safe now — no active workers)
     scout.dispose();
     sentinel.dispose();
+    journal.dispose();
     gearRuntime.dispose();
     await gearRuntime.shutdown();
 
@@ -904,7 +929,7 @@ export async function startMeridian(options?: {
   process.on('SIGTERM', () => { handleSignal('SIGTERM'); });
   process.on('SIGINT', () => { handleSignal('SIGINT'); });
 
-  return { axis, scout, sentinel, gearRuntime, bridge, shutdown };
+  return { axis, scout, sentinel, journal, gearRuntime, bridge, shutdown };
 }
 
 // ---------------------------------------------------------------------------

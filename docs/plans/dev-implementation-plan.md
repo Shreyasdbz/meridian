@@ -2780,9 +2780,15 @@ The following deviations from the original plan were made during Phase 11 implem
 
 #### 11.1 — Gear Suggester Activation
 
-- **Plan**: "User actions: implement from brief, refine brief, dismiss" and "Journal notes rejection when dismissed"
-- **Implemented**: Gear brief review UI shows briefs with dismiss action. The "implement from brief" and "refine brief" actions are displayed as placeholder buttons — actual Gear code generation from briefs is not implemented (that would require LLM code generation which is a Gear Suggester Phase 2 feature per architecture Section 5.4.4). The dismiss action deletes the brief file.
-- **Rationale**: The architecture says the Gear Suggester produces "briefs, not code" (Section 5.4.4). The implement/refine actions in the plan are UI affordances for a future code generation feature. The v0.4 scope correctly focuses on brief generation and review.
+- **Plan**: "End-to-end flow: task execution → Journal reflection → Gear brief generation → user notification" and "User actions: implement from brief, refine brief, dismiss" and "Journal notes rejection when dismissed"
+- **Implemented**: Full end-to-end pipeline is wired: Journal component (`src/journal/journal.ts`) registers with Axis as `'journal'`, handles `reflect.request` messages, orchestrates Reflector → MemoryWriter → GearSuggester, and returns results including any Gear brief. The Bridge broadcasts a `gear_brief` WebSocket message to notify the UI. The "implement from brief" and "refine brief" actions are displayed as disabled placeholder buttons in the UI — actual Gear code generation from briefs is not implemented (that would require LLM code generation which is a Gear Suggester Phase 2 feature per architecture Section 5.4.4). The dismiss action marks the brief as dismissed. "Journal notes rejection when dismissed" is partially implemented: the dismiss action updates brief status but does not write a rejection record to Journal memory.
+- **Rationale**: The architecture says the Gear Suggester produces "briefs, not code" (Section 5.4.4). The implement/refine actions in the plan are UI affordances for a future code generation feature. The v0.4 scope correctly focuses on brief generation and review. Journal rejection logging can be added as a follow-up when the Journal memory query API supports filtering by rejection reason.
+
+#### 11.1 — Journal Database Initialization
+
+- **Plan**: Journal database opening and migration assumed to be handled by Phase 10 (v0.3).
+- **Implemented**: The `journal` database (`journal.db`) is now opened and migrated in `main.ts` alongside the `meridian` database. This was required for the Journal component to function — Phase 10 implemented the MemoryStore, Reflector, MemoryWriter, and GearSuggester classes but did not wire them into the startup sequence.
+- **Rationale**: Phase 10 deviation 10.2 explicitly deferred the Gear Suggester trigger logic to v0.4 (Phase 11.1). The Journal database must be available for memory writes during the reflection pipeline. Opening it at startup is consistent with the data isolation design (Section 8.1).
 
 #### 11.1 — Model Router
 

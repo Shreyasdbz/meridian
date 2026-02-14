@@ -1,5 +1,9 @@
 // @meridian/journal — public API
 
+// Phase 11.1: Journal Component (Axis integration)
+export { Journal, createJournal } from './journal.js';
+export type { JournalConfig, JournalLogger, JournalDependencies } from './journal.js';
+
 // Phase 10.1: Memory Storage & Retrieval
 export { MemoryStore } from './memory-store.js';
 export type {
