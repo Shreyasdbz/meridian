@@ -5,14 +5,23 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 
 import type { Logger, SentinelDecision } from '@meridian/shared';
 
-import type { SentinelMemory } from '../../../sentinel/memory.js';
-
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
+/**
+ * Structural interface for Sentinel Memory (avoids bridge → sentinel import).
+ * At runtime the concrete SentinelMemory from @meridian/sentinel satisfies this
+ * via duck typing. Bridge depends only on @meridian/shared.
+ */
+export interface SentinelMemoryLike {
+  listActiveDecisions(): Promise<SentinelDecision[]>;
+  deleteDecision(id: string): Promise<void>;
+  pruneExpired(): Promise<number>;
+}
+
 export interface TrustRouteOptions {
-  sentinelMemory: SentinelMemory;
+  sentinelMemory: SentinelMemoryLike;
   logger: Logger;
 }
 

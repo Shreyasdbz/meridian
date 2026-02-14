@@ -2690,6 +2690,13 @@ The following deviations from the original plan were made during Phase 10 implem
 - **Implemented**: Not implemented in Phase 10.7.
 - **Rationale**: Image/file upload requires additional Bridge API endpoints, workspace storage management, and multimodal message handling in Scout. These are better delivered alongside the voice input feature in v0.4 (Phase 11) as part of a unified input modality expansion.
 
+#### 10.3 — Trust Routes Module Boundary Fix
+
+- **Plan**: Trust decision routes (`src/bridge/api/routes/trust.ts`) manage Sentinel Memory decisions.
+- **Issue**: The initial implementation imported `SentinelMemory` directly from `../../../sentinel/memory.js`, violating the module boundary rule that `bridge/` depends only on `shared/`. This was caught by `dependency-cruiser` as a `bridge-deps` violation.
+- **Fix**: Replaced the direct import with a structural `SentinelMemoryLike` interface defined locally in `trust.ts`, typed with `SentinelDecision` from `@meridian/shared`. The concrete `SentinelMemory` instance satisfies this interface via duck typing at runtime. The matching `SentinelMemoryLike` in `server.ts` was also strengthened from `Array<Record<string, unknown>>` to `SentinelDecision[]`, and the `as any` cast was removed.
+- **Rationale**: Module boundaries are enforced by both ESLint `no-restricted-imports` and `dependency-cruiser`. Bridge must depend only on `shared/` — all cross-component communication uses structural interfaces or types from `shared/`.
+
 ---
 
 ## Phase 11: v0.4 — Growth & Ecosystem

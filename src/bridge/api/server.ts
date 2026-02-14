@@ -22,6 +22,7 @@ import type {
   JobStatus,
   Logger,
   SecretsVault,
+  SentinelDecision,
   WSApprovalRequiredMessage,
   WSStatusMessage,
 } from '@meridian/shared';
@@ -147,10 +148,10 @@ export function detectSystemPromptLeakage(text: string): string | undefined {
 
 /**
  * Structural interface for Sentinel Memory (avoids bridge → sentinel import).
- * Compatible with SentinelMemory from @meridian/sentinel.
+ * Compatible with SentinelMemory from @meridian/sentinel via duck typing.
  */
 export interface SentinelMemoryLike {
-  listActiveDecisions(): Promise<Array<Record<string, unknown>>>;
+  listActiveDecisions(): Promise<SentinelDecision[]>;
   deleteDecision(id: string): Promise<void>;
   pruneExpired(): Promise<number>;
 }
@@ -339,8 +340,7 @@ export async function createServer(options: CreateServerOptions): Promise<{
   }
 
   if (sentinelMemory) {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-explicit-any -- structural type bridging (avoids bridge → sentinel import)
-    trustRoutes(server, { sentinelMemory: sentinelMemory as any, logger });
+    trustRoutes(server, { sentinelMemory, logger });
   }
 
   if (dataDir) {
