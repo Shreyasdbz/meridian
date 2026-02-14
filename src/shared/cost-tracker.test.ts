@@ -174,7 +174,7 @@ describe('CostTracker', () => {
 
       // First db.run call is the INSERT INTO llm_calls
       expect(db.run).toHaveBeenCalledTimes(2);
-      const [firstCallDb, firstCallSql, firstCallParams] = db.run.mock.calls[0];
+      const [firstCallDb, firstCallSql, firstCallParams] = db.run.mock.calls[0]!;
       expect(firstCallDb).toBe('meridian');
       expect(firstCallSql).toContain('INSERT INTO llm_calls');
       expect(firstCallParams[0]).toBe('test-id'); // from mocked generateId
@@ -191,7 +191,7 @@ describe('CostTracker', () => {
       await tracker.recordCall(makeRecord());
 
       // Second db.run call is the INSERT INTO cost_daily (upsert)
-      const [secondCallDb, secondCallSql] = db.run.mock.calls[1];
+      const [secondCallDb, secondCallSql] = db.run.mock.calls[1]!;
       expect(secondCallDb).toBe('meridian');
       expect(secondCallSql).toContain('INSERT INTO cost_daily');
       expect(secondCallSql).toContain('ON CONFLICT');
@@ -284,7 +284,7 @@ describe('CostTracker', () => {
 
       await tracker.recordCall(makeRecord({ jobId: undefined }));
 
-      const [, , params] = db.run.mock.calls[0];
+      const [, , params] = db.run.mock.calls[0]!;
       expect(params[1]).toBeNull(); // job_id
     });
 
@@ -293,7 +293,7 @@ describe('CostTracker', () => {
 
       await tracker.recordCall(makeRecord({ jobId: 'job-123' }));
 
-      const [, , params] = db.run.mock.calls[0];
+      const [, , params] = db.run.mock.calls[0]!;
       expect(params[1]).toBe('job-123');
     });
 
@@ -302,7 +302,7 @@ describe('CostTracker', () => {
 
       await tracker.recordCall(makeRecord({ cachedTokens: undefined }));
 
-      const [, , insertParams] = db.run.mock.calls[0];
+      const [, , insertParams] = db.run.mock.calls[0]!;
       expect(insertParams[7]).toBe(0); // cached_tokens in llm_calls
     });
 
@@ -311,7 +311,7 @@ describe('CostTracker', () => {
 
       await tracker.recordCall(makeRecord({ durationMs: undefined }));
 
-      const [, , insertParams] = db.run.mock.calls[0];
+      const [, , insertParams] = db.run.mock.calls[0]!;
       expect(insertParams[9]).toBe(0); // duration_ms in llm_calls
     });
   });
@@ -604,10 +604,10 @@ describe('CostTracker', () => {
       const results = await tracker.getCostRange('2026-02-10', '2026-02-11');
 
       expect(results).toHaveLength(2);
-      expect(results[0].date).toBe('2026-02-10');
-      expect(results[0].totalCostUsd).toBe(1.0);
-      expect(results[1].date).toBe('2026-02-11');
-      expect(results[1].totalCostUsd).toBe(2.0);
+      expect(results[0]!.date).toBe('2026-02-10');
+      expect(results[0]!.totalCostUsd).toBe(1.0);
+      expect(results[1]!.date).toBe('2026-02-11');
+      expect(results[1]!.totalCostUsd).toBe(2.0);
     });
 
     it('should return an empty array when no dates exist in range', async () => {

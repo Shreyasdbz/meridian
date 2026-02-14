@@ -138,6 +138,22 @@ export type {
   ScheduleJobCreator,
 } from './schedule-evaluator.js';
 
+// Circuit breaker (Phase 9.6)
+export { CircuitBreaker } from './circuit-breaker.js';
+export type { CircuitBreakerConfig } from './circuit-breaker.js';
+
+// Standing rules (Phase 9.6)
+export { StandingRuleEvaluator } from './standing-rules.js';
+export type { StandingRule, StandingRuleEvaluatorConfig } from './standing-rules.js';
+
+// Consistency scanner (Phase 9.6)
+export { ConsistencyScanner } from './consistency-scanner.js';
+export type {
+  ConsistencyIssue,
+  ConsistencyScanResult,
+  ConsistencyScannerConfig,
+} from './consistency-scanner.js';
+
 // Memory watchdog (Section 11.4)
 export { MemoryWatchdog } from './memory-watchdog.js';
 export type {

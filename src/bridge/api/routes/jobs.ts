@@ -522,4 +522,115 @@ export function jobRoutes(
       metadata: validation.metadata ?? null,
     });
   });
+
+  // POST /api/jobs/batch-approve — Approve multiple jobs at once (Phase 9.6)
+  server.post('/api/jobs/batch-approve', {
+    schema: {
+      body: {
+        type: 'object',
+        required: ['jobIds', 'nonces'],
+        properties: {
+          jobIds: { type: 'array', items: { type: 'string' }, minItems: 1 },
+          nonces: {
+            type: 'object',
+            additionalProperties: { type: 'string' },
+          },
+        },
+      },
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            approved: { type: 'array', items: { type: 'string' } },
+            failed: { type: 'array' },
+          },
+        },
+      },
+    },
+  }, async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
+    const body = request.body as {
+      jobIds: string[];
+      nonces: Record<string, string>;
+    };
+
+    const approved: string[] = [];
+    const failed: Array<{ id: string; error: string }> = [];
+
+    for (const jobId of body.jobIds) {
+      try {
+        const nonce = body.nonces[jobId];
+        if (!nonce) {
+          failed.push({ id: jobId, error: 'Missing nonce' });
+          continue;
+        }
+
+        // Validate the approval nonce
+        const nonceValid = await authService.validateApprovalNonce(jobId, nonce);
+        if (!nonceValid) {
+          failed.push({ id: jobId, error: 'Invalid or expired approval nonce' });
+          continue;
+        }
+
+        // Get the job
+        const rows = await db.query<JobRow>(
+          'meridian',
+          'SELECT * FROM jobs WHERE id = ?',
+          [jobId],
+        );
+
+        if (rows.length === 0) {
+          failed.push({ id: jobId, error: 'Job not found' });
+          continue;
+        }
+
+        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+        const row = rows[0]!;
+
+        if (row.status !== 'awaiting_approval') {
+          failed.push({ id: jobId, error: `Job in status '${row.status}'` });
+          continue;
+        }
+
+        // Transition to executing
+        if (axis) {
+          const transitioned = await axis.internals.jobQueue.transition(
+            jobId,
+            'awaiting_approval',
+            'executing',
+          );
+          if (!transitioned) {
+            failed.push({ id: jobId, error: 'State changed concurrently' });
+            continue;
+          }
+        } else {
+          const now = new Date().toISOString();
+          const result = await db.run(
+            'meridian',
+            `UPDATE jobs SET status = 'executing', updated_at = ?
+             WHERE id = ? AND status = 'awaiting_approval'`,
+            [now, jobId],
+          );
+          if (result.changes === 0) {
+            failed.push({ id: jobId, error: 'State changed concurrently' });
+            continue;
+          }
+        }
+
+        approved.push(jobId);
+      } catch (error) {
+        failed.push({
+          id: jobId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    logger.info('Batch approve completed', {
+      approvedCount: approved.length,
+      failedCount: failed.length,
+      component: 'bridge',
+    });
+
+    await reply.send({ approved, failed });
+  });
 }
