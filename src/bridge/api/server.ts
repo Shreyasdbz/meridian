@@ -25,6 +25,8 @@ import type {
 } from '@meridian/shared';
 import { API_RATE_LIMIT_PER_MINUTE, redact } from '@meridian/shared';
 
+import type { CostTracker } from '../../shared/cost-tracker.js';
+
 import { AuthService, authRoutes } from './auth.js';
 import { authMiddleware, csrfMiddleware } from './middleware.js';
 import {
@@ -42,6 +44,7 @@ import {
   secretRoutes,
   metricsRoutes,
   scheduleRoutes,
+  costRoutes,
 } from './routes/index.js';
 import { type WebSocketManager, websocketRoutes } from './websocket.js';
 
@@ -148,6 +151,8 @@ export interface CreateServerOptions {
   vault?: SecretsVault;
   /** Metrics provider for /api/metrics endpoint (opt-in). */
   metricsProvider?: MetricsProvider;
+  /** Cost tracker for /api/costs endpoints (opt-in). */
+  costTracker?: CostTracker;
   /** Application version string (e.g. "0.1.0"). */
   version?: string;
   /** Callback to check if the server has completed full startup. */
@@ -167,7 +172,7 @@ export async function createServer(options: CreateServerOptions): Promise<{
   authService: AuthService;
   wsManager: WebSocketManager;
 }> {
-  const { config, db, logger, rateLimitMax, disableRateLimit, auditLog, vault, metricsProvider, version, isReady, getComponentStatus, maxWsConnections } = options;
+  const { config, db, logger, rateLimitMax, disableRateLimit, auditLog, vault, metricsProvider, costTracker, version, isReady, getComponentStatus, maxWsConnections } = options;
 
   const server = Fastify({
     logger: false, // We use our own logger
@@ -287,6 +292,10 @@ export async function createServer(options: CreateServerOptions): Promise<{
 
   if (metricsProvider) {
     metricsRoutes(server, { metricsProvider });
+  }
+
+  if (costTracker) {
+    costRoutes(server, { costTracker, logger });
   }
 
   // ----- WebSocket routes (Phase 6.3) -----
@@ -417,6 +426,7 @@ export async function createBridgeServer(
     auditLog: options.auditLog,
     vault: options.vault,
     metricsProvider: options.metricsProvider,
+    costTracker: options.costTracker,
     version: options.version,
     isReady: options.isReady ?? (() => axis.isReady()),
     getComponentStatus: options.getComponentStatus,
@@ -511,7 +521,7 @@ async function createServerWithAxis(options: CreateServerOptions & { axis: AxisA
 }> {
   const {
     config, db, logger, axis,
-    rateLimitMax, disableRateLimit, auditLog, vault, metricsProvider,
+    rateLimitMax, disableRateLimit, auditLog, vault, metricsProvider, costTracker,
     version, isReady, getComponentStatus, maxWsConnections,
   } = options;
 
@@ -605,6 +615,9 @@ async function createServerWithAxis(options: CreateServerOptions & { axis: AxisA
   }
   if (metricsProvider) {
     metricsRoutes(server, { metricsProvider });
+  }
+  if (costTracker) {
+    costRoutes(server, { costTracker, logger });
   }
 
   // ----- WebSocket -----

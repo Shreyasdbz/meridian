@@ -280,6 +280,17 @@ export { Logger, createLogger, redact } from './logger.js';
 export type { SecretMetadata, SecretRotationWarning } from './secrets.js';
 export { SecretsVault } from './secrets.js';
 
+// Cost tracking (Phase 9.5)
+export { CostTracker } from './cost-tracker.js';
+export type {
+  CostTrackerConfig,
+  CostTrackerLogger,
+  LLMCallRecord,
+  DailyCostSummary,
+  JobCostSummary,
+  CostAlertLevel,
+} from './cost-tracker.js';
+
 // Ed25519 signing (Section 6.3, v0.2)
 export type {
   Ed25519Keypair,

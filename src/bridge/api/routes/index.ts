@@ -32,3 +32,6 @@ export type { MetricsRouteOptions, MetricsProvider } from './metrics.js';
 
 export { scheduleRoutes } from './schedules.js';
 export type { ScheduleRouteOptions } from './schedules.js';
+
+export { costRoutes } from './costs.js';
+export type { CostRouteOptions } from './costs.js';
