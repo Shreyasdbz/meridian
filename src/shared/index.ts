@@ -54,6 +54,25 @@ export type {
   WSConnectedMessage,
   WSPingMessage,
   WSPongMessage,
+  WSGearBriefMessage,
+
+  // Model routing (v0.4)
+  ModelTier,
+  ModelRoutingDecision,
+  TaskComplexity,
+
+  // Semantic cache (v0.4)
+  SemanticCacheEntry,
+
+  // Plan replay cache (v0.4)
+  PlanReplayCacheEntry,
+
+  // MCP compatibility (v0.4)
+  MCPToolDefinition,
+  MCPServerConfig,
+
+  // Voice input (v0.4)
+  VoiceTranscriptionResult,
 
   // Audit
   AuditEntry,
@@ -236,6 +255,25 @@ export {
 
   // Semantic cache
   SEMANTIC_CACHE_SIMILARITY_THRESHOLD,
+  SEMANTIC_CACHE_TTL_MS,
+  SEMANTIC_CACHE_MAX_ENTRIES,
+
+  // Plan replay cache
+  PLAN_REPLAY_CACHE_MAX_ENTRIES,
+  PLAN_REPLAY_CACHE_TTL_MS,
+
+  // Sentinel approval cache
+  SENTINEL_APPROVAL_CACHE_MAX_ENTRIES,
+  SENTINEL_APPROVAL_CACHE_TTL_MS,
+
+  // Voice input
+  MAX_VOICE_UPLOAD_BYTES,
+  VOICE_TRANSCRIPTION_TIMEOUT_MS,
+
+  // TOTP
+  TOTP_PERIOD_SECONDS,
+  TOTP_DIGITS,
+  TOTP_ALGORITHM,
 
   // Data retention
   RETENTION_CONVERSATION_DAYS,

@@ -13,6 +13,7 @@ export default defineConfig({
     'better-sqlite3',
     'argon2',
     'bcrypt',
+    'isolated-vm',
   ],
   banner: {
     js: '#!/usr/bin/env node',

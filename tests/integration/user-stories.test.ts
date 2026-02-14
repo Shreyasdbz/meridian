@@ -860,10 +860,12 @@ describe('User Story 3: High-Risk Task with Approval', () => {
 
     await waitForJobTerminal(job.id);
 
-    // Verify the reflection stub was invoked (journalSkip is false/undefined)
-    const reflectionLogs = mockLogger.info.mock.calls.filter(
+    // Verify reflection was attempted (journalSkip is false/undefined).
+    // Since Journal is not registered in this test, the dispatch returns an
+    // error and the pipeline logs at debug level.
+    const reflectionLogs = mockLogger.debug.mock.calls.filter(
       (call: unknown[]) =>
-        typeof call[0] === 'string' && call[0].includes('Reflection stub'),
+        typeof call[0] === 'string' && call[0].includes('Journal reflection skipped'),
     );
     expect(reflectionLogs.length).toBe(1);
   });

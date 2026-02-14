@@ -15,9 +15,13 @@ import type {
   ComponentRegistry,
   GearManifest,
   LLMProvider,
+  ModelRoutingDecision,
 } from '@meridian/shared';
 import { generateId, ValidationError } from '@meridian/shared';
 
+import { createFailureState } from './failure-handler.js';
+import { ModelRouter } from './model-router.js';
+import type { PlanReplayCache } from './plan-replay-cache.js';
 import { Planner } from './planner.js';
 import type {
   PlannerAuditWriter,
@@ -27,6 +31,7 @@ import type {
   PlanError,
 } from './planner.js';
 import { PLAN_GENERATION_TEMPLATE } from './prompts/plan-generation.js';
+import type { SemanticCache } from './semantic-cache.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -60,6 +65,10 @@ export interface ScoutConfig {
   maxContextMessages?: number;
   /** Per-job token budget. */
   jobTokenBudget?: number;
+  /** Plan replay cache for skipping LLM calls on repeated scheduled tasks (v0.4). */
+  planReplayCache?: PlanReplayCache;
+  /** Semantic response cache for caching LLM responses (v0.4). */
+  semanticCache?: SemanticCache;
 }
 
 /**
@@ -103,18 +112,33 @@ export class Scout {
   private readonly registry: ComponentRegistry;
   private readonly logger: PlannerLogger;
   private readonly config: ScoutConfig;
+  private readonly modelRouter: ModelRouter | null;
+  private readonly planReplayCache: PlanReplayCache | null;
+  private readonly semanticCache: SemanticCache | null;
   private disposed = false;
 
   constructor(config: ScoutConfig, deps: ScoutDependencies) {
     this.config = config;
     this.registry = deps.registry;
     this.logger = config.logger ?? noopLogger;
+    this.planReplayCache = config.planReplayCache ?? null;
+    this.semanticCache = config.semanticCache ?? null;
 
-    // Log secondary model reservation for v0.4
+    // Adaptive model selection (Phase 11.1, Section 5.2.6):
+    // When secondaryModel is configured, create a ModelRouter for
+    // task-type routing between primary and secondary models.
     if (config.secondaryModel) {
-      this.logger.debug('Secondary model configured (reserved for v0.4)', {
+      this.modelRouter = new ModelRouter({
+        primaryModel: config.primaryModel,
+        secondaryModel: config.secondaryModel,
+        logger: this.logger,
+      });
+      this.logger.info('Adaptive model selection enabled', {
+        primaryModel: config.primaryModel,
         secondaryModel: config.secondaryModel,
       });
+    } else {
+      this.modelRouter = null;
     }
 
     // Create the underlying Planner with the primary model
@@ -137,6 +161,8 @@ export class Scout {
       primaryModel: config.primaryModel,
       secondaryModel: config.secondaryModel ?? '(not configured)',
       promptVersion: PLAN_GENERATION_TEMPLATE.version,
+      planReplayCache: !!this.planReplayCache,
+      semanticCache: !!this.semanticCache,
     });
   }
 
@@ -181,9 +207,62 @@ export class Scout {
       from: message.from,
     });
 
+    const userMessage = payload['userMessage'];
+    const source = payload['source'] as string | undefined;
+    const gearCatalogIds = this.config.gearCatalog?.map((g) => g.id);
+
+    // --- Plan Replay Cache check (v0.4) ---
+    // For scheduled tasks, check if we have a cached plan
+    if (this.planReplayCache && source === 'schedule') {
+      const inputHash = this.planReplayCache.computeInputHash({
+        userMessage,
+        gearCatalog: gearCatalogIds,
+      });
+      const cachedPlan = this.planReplayCache.lookup(inputHash);
+      if (cachedPlan) {
+        this.planReplayCache.recordHit(inputHash);
+        this.logger.info('Plan replay cache hit — skipping LLM call', {
+          jobId,
+          inputHash,
+          planId: cachedPlan.id,
+        });
+
+        const cacheResult: PlanResult = {
+          path: 'full',
+          plan: cachedPlan,
+          usage: { inputTokens: 0, outputTokens: 0 },
+          failureState: createFailureState(),
+        };
+        return this.buildResponse(message, cacheResult);
+      }
+    }
+
+    // --- Semantic Cache check (v0.4) ---
+    // For conversational queries, check if we have a cached response
+    if (this.semanticCache) {
+      const cachedResponse = await this.semanticCache.lookup(
+        userMessage,
+        this.config.primaryModel,
+      );
+      if (cachedResponse) {
+        this.logger.info('Semantic cache hit — returning cached response', {
+          jobId,
+          responseLength: cachedResponse.length,
+        });
+
+        const cacheResult: PlanResult = {
+          path: 'fast',
+          text: cachedResponse,
+          usage: { inputTokens: 0, outputTokens: 0 },
+          failureState: createFailureState(),
+        };
+        return this.buildResponse(message, cacheResult);
+      }
+    }
+
     // Build PlanRequest from the AxisMessage payload
     const planRequest: PlanRequest = {
-      userMessage: payload['userMessage'],
+      userMessage,
       jobId,
       conversationId: payload['conversationId'] as string | undefined,
       conversationHistory: payload['conversationHistory'] as PlanRequest['conversationHistory'],
@@ -196,8 +275,75 @@ export class Scout {
       signal,
     };
 
+    // Adaptive model selection (Phase 11.1):
+    // When a ModelRouter is available, classify the task and select model.
+    let routingDecision: ModelRoutingDecision | undefined;
+    if (this.modelRouter) {
+      routingDecision = this.modelRouter.route({
+        userMessage: planRequest.userMessage,
+        conversationHistory: planRequest.conversationHistory?.map((m) => ({
+          role: m.role,
+          content: m.content,
+        })),
+        hasFailureState: !!(
+          planRequest.failureState &&
+          (planRequest.failureState.revisionCount > 0 ||
+           planRequest.failureState.replanCount > 0 ||
+           planRequest.failureState.malformedJsonRetries > 0)
+        ),
+        forceFullPath: planRequest.forceFullPath,
+        jobId,
+      });
+
+      // Pass the selected model as override to the Planner
+      planRequest.modelOverride = routingDecision.model;
+
+      this.logger.debug('Model routing applied', {
+        jobId,
+        tier: routingDecision.tier,
+        model: routingDecision.model,
+        complexity: routingDecision.taskComplexity,
+      });
+    }
+
     // Delegate to the Planner
     const result = await this.planner.generatePlan(planRequest);
+
+    // Attach routing decision metadata to successful plan responses
+    if (routingDecision && !('type' in result) && result.path === 'full' && result.plan) {
+      result.plan.metadata = {
+        ...result.plan.metadata,
+        modelRouting: routingDecision,
+      };
+    }
+
+    // --- Post-generation cache storage (v0.4) ---
+    if (!('type' in result)) {
+      // Store in plan replay cache if eligible
+      if (
+        this.planReplayCache &&
+        source === 'schedule' &&
+        result.path === 'full' &&
+        result.plan
+      ) {
+        if (this.planReplayCache.isCacheable(result.plan, 'schedule')) {
+          const inputHash = this.planReplayCache.computeInputHash({
+            userMessage,
+            gearCatalog: gearCatalogIds,
+          });
+          this.planReplayCache.store(inputHash, result.plan);
+        }
+      }
+
+      // Store in semantic cache if fast-path response
+      if (this.semanticCache && result.path === 'fast' && result.text) {
+        await this.semanticCache.store(
+          userMessage,
+          result.text,
+          this.config.primaryModel,
+        );
+      }
+    }
 
     // Build and return plan.response AxisMessage
     return this.buildResponse(message, result);

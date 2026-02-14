@@ -13,6 +13,7 @@ import { useUIStore } from '../../stores/ui-store.js';
 
 import { ActiveTasksSection } from './active-tasks-section.js';
 import { CostSummarySection } from './cost-summary-section.js';
+import { GearBriefsSection } from './gear-briefs-section.js';
 import { JobInspector } from './job-inspector.js';
 import { PendingApprovalsSection } from './pending-approvals-section.js';
 import { RecentCompletionsSection } from './recent-completions-section.js';
@@ -161,6 +162,9 @@ export function MissionControl(): React.ReactElement {
 
             {/* Cost Tracking (Phase 9.5) */}
             <CostSummarySection />
+
+            {/* Gear Suggestions (Phase 11.1) */}
+            <GearBriefsSection />
 
             {/* System Health */}
             <SystemHealthSection connectionState={connectionState} />

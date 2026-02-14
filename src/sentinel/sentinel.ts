@@ -33,6 +33,7 @@ import type {
 } from '@meridian/shared';
 import { generateId, ValidationError } from '@meridian/shared';
 
+import type { ApprovalCache } from './approval-cache.js';
 import type { LLMValidatorConfig } from './llm-validator.js';
 import { checkSameProvider, validatePlanWithLLM } from './llm-validator.js';
 import type { PolicyEngineConfig } from './policy-engine.js';
@@ -75,6 +76,8 @@ export interface SentinelConfig {
   scoutProviderId?: string;
   /** Logger for Sentinel events. */
   logger?: SentinelLogger;
+  /** Approval cache for reusing cached approvals on scheduled tasks (v0.4). */
+  approvalCache?: ApprovalCache;
 }
 
 /**
@@ -164,6 +167,7 @@ export class Sentinel {
   private readonly registry: ComponentRegistry;
   private readonly logger: SentinelLogger;
   private readonly useLLM: boolean;
+  private readonly approvalCache: ApprovalCache | null;
   private disposed = false;
 
   constructor(config: SentinelConfig, deps: SentinelDependencies) {
@@ -172,6 +176,7 @@ export class Sentinel {
     this.registry = deps.registry;
     this.logger = config.logger ?? noopLogger;
     this.useLLM = !!config.llmConfig;
+    this.approvalCache = config.approvalCache ?? null;
 
     // Register with Axis's component registry
     this.registry.register('sentinel', this.handleMessage.bind(this));
@@ -197,6 +202,7 @@ export class Sentinel {
       workspacePath: this.policyConfig.workspacePath,
       allowlistedDomains: this.policyConfig.allowlistedDomains,
       userPolicies: this.policyConfig.userPolicies?.length ?? 0,
+      approvalCache: !!this.approvalCache,
     });
   }
 
@@ -239,6 +245,8 @@ export class Sentinel {
       );
     }
 
+    const source = payload['source'] as string | undefined;
+
     this.logger.debug('Received validate.request', {
       messageId: message.id,
       correlationId: message.correlationId,
@@ -247,6 +255,33 @@ export class Sentinel {
       stepCount: plan.steps.length,
       mode: this.useLLM ? 'llm' : 'rule-based',
     });
+
+    // --- Approval Cache check (v0.4) ---
+    // For eligible scheduled tasks, check if we have a cached approval
+    if (this.approvalCache && source) {
+      if (this.approvalCache.isEligible(plan, source)) {
+        const planHash = this.approvalCache.computePlanHash(plan);
+        const cachedResult = this.approvalCache.lookup(planHash);
+        if (cachedResult) {
+          this.logger.info('Approval cache hit — returning cached validation', {
+            planId: plan.id,
+            planHash,
+            verdict: cachedResult.verdict,
+          });
+          // Tag the result as coming from cache
+          const cachedValidation: ValidationResult = {
+            ...cachedResult,
+            id: generateId(),
+            planId: plan.id,
+            metadata: {
+              ...cachedResult.metadata,
+              fromApprovalCache: true,
+            },
+          };
+          return this.buildResponse(message, cachedValidation);
+        }
+      }
+    }
 
     // Choose validation path
     let validation: ValidationResult;
@@ -272,6 +307,15 @@ export class Sentinel {
         (s) => s.verdict === 'needs_user_approval',
       ).length,
     });
+
+    // --- Store in Approval Cache (v0.4) ---
+    // Cache approved results for eligible scheduled tasks
+    if (this.approvalCache && source) {
+      if (this.approvalCache.isEligible(plan, source)) {
+        const planHash = this.approvalCache.computePlanHash(plan);
+        this.approvalCache.store(planHash, validation);
+      }
+    }
 
     // Build and return validate.response
     return this.buildResponse(message, validation);

@@ -115,6 +115,11 @@ export interface PlanRequest {
   cumulativeTokens?: number;
   /** AbortSignal for cancellation. */
   signal?: AbortSignal;
+  /**
+   * Model override for adaptive model selection (Phase 11.1).
+   * When present, this model is used instead of the planner's default model.
+   */
+  modelOverride?: string;
 }
 
 /** Result of plan generation. */
@@ -420,6 +425,9 @@ export class Planner {
     const failureState = request.failureState ?? createFailureState();
     const cumulativeTokens = request.cumulativeTokens ?? 0;
 
+    // Determine which model to use — adaptive selection (Phase 11.1)
+    const effectiveModel = request.modelOverride ?? this.model;
+
     // Enforce per-job token budget (Section 6.2 LLM10)
     if (cumulativeTokens >= this.jobTokenBudget) {
       this.logger.warn('Per-job token budget exceeded', {
@@ -464,7 +472,8 @@ export class Planner {
       riskLevel: 'low',
       jobId: request.jobId,
       details: {
-        model: this.model,
+        model: effectiveModel,
+        modelOverride: request.modelOverride ?? null,
         provider: this.provider.name,
         messageCount: messages.length,
         estimatedInputTokens: messages.reduce(
@@ -477,7 +486,8 @@ export class Planner {
 
     this.logger.debug('Calling LLM provider', {
       jobId: request.jobId,
-      model: this.model,
+      model: effectiveModel,
+      modelOverride: request.modelOverride ?? null,
       messageCount: messages.length,
       forceFullPath: request.forceFullPath,
     });
@@ -488,7 +498,7 @@ export class Planner {
 
     try {
       const stream = this.provider.chat({
-        model: this.model,
+        model: effectiveModel,
         messages,
         temperature: this.temperature,
         signal: request.signal,
@@ -501,6 +511,7 @@ export class Planner {
       // Provider API errors are handled by Axis error classification (5.1.11)
       this.logger.error('LLM call failed', {
         jobId: request.jobId,
+        model: effectiveModel,
         error: error instanceof Error ? error.message : String(error),
       });
       throw error;
@@ -513,7 +524,7 @@ export class Planner {
       riskLevel: 'low',
       jobId: request.jobId,
       details: {
-        model: this.model,
+        model: effectiveModel,
         responseLength: raw.length,
         inputTokens: usage.inputTokens,
         outputTokens: usage.outputTokens,

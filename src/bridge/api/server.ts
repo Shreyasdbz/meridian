@@ -40,6 +40,7 @@ import {
   messageRoutes,
   jobRoutes,
   gearRoutes,
+  gearBriefRoutes,
   configRoutes,
   memoryRoutes,
   auditRoutes,
@@ -49,6 +50,8 @@ import {
   costRoutes,
   trustRoutes,
   dataRoutes,
+  registerVoiceRoutes,
+  registerTOTPRoutes,
 } from './routes/index.js';
 import { buildHstsHeader, buildHttpsOptions, shouldAddHsts } from './tls.js';
 import { type WebSocketManager, websocketRoutes } from './websocket.js';
@@ -65,7 +68,7 @@ const SECURITY_HEADERS: Record<string, string> = {
   'X-Content-Type-Options': 'nosniff',
   'X-Frame-Options': 'DENY',
   'Referrer-Policy': 'strict-origin-when-cross-origin',
-  'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
+  'Permissions-Policy': 'camera=(), microphone=(self), geolocation=()',
 };
 
 // ---------------------------------------------------------------------------
@@ -172,6 +175,8 @@ export interface CreateServerOptions {
   sentinelMemory?: SentinelMemoryLike;
   /** Data directory for right-to-deletion route (Phase 10.6). */
   dataDir?: string;
+  /** Workspace path for Gear brief routes (Phase 11.1). */
+  workspacePath?: string;
   /** Application version string (e.g. "0.1.0"). */
   version?: string;
   /** Callback to check if the server has completed full startup. */
@@ -180,6 +185,8 @@ export interface CreateServerOptions {
   getComponentStatus?: () => Record<string, ComponentHealth>;
   /** Override max WebSocket connections (defaults to MAX_WS_CONNECTIONS_DESKTOP). */
   maxWsConnections?: number;
+  /** Whisper API endpoint for voice transcription (Phase 11.3). */
+  whisperEndpoint?: string;
 }
 
 /**
@@ -191,7 +198,7 @@ export async function createServer(options: CreateServerOptions): Promise<{
   authService: AuthService;
   wsManager: WebSocketManager;
 }> {
-  const { config, db, logger, rateLimitMax, disableRateLimit, auditLog, vault, metricsProvider, costTracker, sentinelMemory, dataDir, version, isReady, getComponentStatus, maxWsConnections } = options;
+  const { config, db, logger, rateLimitMax, disableRateLimit, auditLog, vault, metricsProvider, costTracker, sentinelMemory, dataDir, workspacePath, version, isReady, getComponentStatus, maxWsConnections, whisperEndpoint } = options;
 
   // ----- TLS (Phase 9.7) -----
   const httpsOptions = buildHttpsOptions(config, logger);
@@ -311,6 +318,10 @@ export async function createServer(options: CreateServerOptions): Promise<{
   memoryRoutes(server, { db, logger });
   scheduleRoutes(server, { db, logger });
 
+  if (workspacePath) {
+    gearBriefRoutes(server, { workspacePath, logger });
+  }
+
   if (auditLog) {
     auditRoutes(server, { auditLog, logger });
   }
@@ -335,6 +346,12 @@ export async function createServer(options: CreateServerOptions): Promise<{
   if (dataDir) {
     dataRoutes(server, { db, dataDir, logger });
   }
+
+  // ----- Voice transcription routes (Phase 11.3) -----
+  registerVoiceRoutes(server, { whisperEndpoint, logger });
+
+  // ----- TOTP routes (Phase 11.3) -----
+  registerTOTPRoutes(server, { db, logger });
 
   // ----- WebSocket routes (Phase 6.3) -----
   const wsManager = websocketRoutes(server, {
@@ -465,10 +482,12 @@ export async function createBridgeServer(
     vault: options.vault,
     metricsProvider: options.metricsProvider,
     costTracker: options.costTracker,
+    workspacePath: options.workspacePath,
     version: options.version,
     isReady: options.isReady ?? (() => axis.isReady()),
     getComponentStatus: options.getComponentStatus,
     maxWsConnections: options.maxWsConnections,
+    whisperEndpoint: options.whisperEndpoint,
   });
 
   // 2. Register job status change listener for WebSocket broadcasts
@@ -562,7 +581,7 @@ async function createServerWithAxis(options: CreateServerOptions & { axis: AxisA
   const {
     config, db, logger, axis,
     rateLimitMax, disableRateLimit, auditLog, vault, metricsProvider, costTracker,
-    version, isReady, getComponentStatus, maxWsConnections,
+    workspacePath, version, isReady, getComponentStatus, maxWsConnections, whisperEndpoint,
   } = options;
 
   // ----- TLS (Phase 9.7) -----
@@ -657,6 +676,10 @@ async function createServerWithAxis(options: CreateServerOptions & { axis: AxisA
   memoryRoutes(server, { db, logger });
   scheduleRoutes(server, { db, logger });
 
+  if (workspacePath) {
+    gearBriefRoutes(server, { workspacePath, logger });
+  }
+
   if (auditLog) {
     auditRoutes(server, { auditLog, logger });
   }
@@ -669,6 +692,12 @@ async function createServerWithAxis(options: CreateServerOptions & { axis: AxisA
   if (costTracker) {
     costRoutes(server, { costTracker, logger });
   }
+
+  // ----- Voice transcription routes (Phase 11.3) -----
+  registerVoiceRoutes(server, { whisperEndpoint, logger });
+
+  // ----- TOTP routes (Phase 11.3) -----
+  registerTOTPRoutes(server, { db, logger });
 
   // ----- WebSocket -----
   const wsManager = websocketRoutes(server, {

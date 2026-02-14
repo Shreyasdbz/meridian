@@ -14,6 +14,7 @@ import { NotificationSection } from './notification-section.js';
 import { SameProviderWarning } from './same-provider-warning.js';
 import { SessionSection } from './session-section.js';
 import { ShellGearSection } from './shell-gear-section.js';
+import { TOTPSection } from './totp-section.js';
 import { TrustProfileSection } from './trust-profile-section.js';
 import { TrustSettingsSection } from './trust-settings-section.js';
 
@@ -98,6 +99,9 @@ export function SettingsPage({ onClose }: SettingsPageProps): React.ReactElement
 
             {/* Developer mode (Section 5.5.5) */}
             <DeveloperModeSection />
+
+            {/* Two-Factor Authentication (Phase 11.3) */}
+            <TOTPSection />
 
             {/* Session management */}
             <SessionSection />

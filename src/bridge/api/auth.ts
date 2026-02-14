@@ -1,6 +1,6 @@
 // @meridian/bridge — Authentication service & routes (Section 6.3)
 // Handles password management, session lifecycle, CSRF protection,
-// brute-force prevention, and per-job approval nonces.
+// brute-force prevention, per-job approval nonces, and TOTP integration.
 
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 
@@ -27,6 +27,8 @@ import {
   SESSION_TOKEN_BYTES,
   generateId,
 } from '@meridian/shared';
+
+import { isTOTPEnabled, validateTOTPToken } from './routes/totp.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -61,6 +63,11 @@ export class AuthService {
     this.db = options.db;
     this.config = options.config;
     this.logger = options.logger;
+  }
+
+  /** Access the database client (used by TOTP integration). */
+  getDb(): DatabaseClient {
+    return this.db;
   }
 
   // -------------------------------------------------------------------------
@@ -484,6 +491,7 @@ interface SetupBody {
 
 interface LoginBody {
   password: string;
+  totpToken?: string;
 }
 
 /** Register auth routes on a Fastify server. */
@@ -540,6 +548,7 @@ export function authRoutes(
         required: ['password'],
         properties: {
           password: { type: 'string' },
+          totpToken: { type: 'string' },
         },
       },
     },
@@ -563,6 +572,37 @@ export function authRoutes(
     if (!session || !token) {
       await reply.status(500).send({ error: 'Internal server error' });
       return;
+    }
+
+    // Check if TOTP is enabled (Phase 11.3)
+    const totpEnabled = await isTOTPEnabled(authService.getDb());
+    if (totpEnabled) {
+      const { totpToken } = request.body;
+
+      // If no TOTP token provided, signal that TOTP is required
+      if (!totpToken) {
+        // Clean up the session since we can't complete login yet
+        await authService.logout(session.id);
+        await reply.send({
+          requiresTOTP: true,
+        });
+        return;
+      }
+
+      // Validate the TOTP token
+      const totpValid = await validateTOTPToken(
+        authService.getDb(),
+        totpToken,
+      );
+      if (!totpValid) {
+        // Clean up the session
+        await authService.logout(session.id);
+        await reply.status(401).send({
+          error: 'Invalid TOTP token',
+          requiresTOTP: true,
+        });
+        return;
+      }
     }
 
     // Set session cookie: HTTP-only, Secure, SameSite=Strict (Section 6.3)

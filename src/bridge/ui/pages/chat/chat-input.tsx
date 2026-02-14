@@ -1,6 +1,8 @@
-// Chat text input with Cmd+Enter to send and Markdown support.
+// Chat text input with Cmd+Enter to send, Markdown support, and voice input.
 
 import { useCallback, useEffect, useRef } from 'react';
+
+import { VoiceInput } from '../../components/voice-input/index.js';
 
 interface ChatInputProps {
   value: string;
@@ -83,6 +85,13 @@ export function ChatInput({
             data-testid="chat-input"
           />
         </div>
+        <VoiceInput
+          onTranscription={(text) => {
+            onChange(value ? `${value} ${text}` : text);
+            textareaRef.current?.focus();
+          }}
+          disabled={disabled}
+        />
         <button
           onClick={onSend}
           disabled={disabled || !value.trim()}

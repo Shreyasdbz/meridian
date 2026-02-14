@@ -24,11 +24,16 @@ export {
   messageRoutes,
   jobRoutes,
   gearRoutes,
+  gearBriefRoutes,
   configRoutes,
   memoryRoutes,
   auditRoutes,
   secretRoutes,
   metricsRoutes,
+  registerVoiceRoutes,
+  registerTOTPRoutes,
+  isTOTPEnabled,
+  validateTOTPToken,
 } from './routes/index.js';
 export type {
   HealthRouteOptions,
@@ -37,6 +42,7 @@ export type {
   MessageRouteOptions,
   JobRouteOptions,
   GearRouteOptions,
+  GearBriefRouteOptions,
   ConfigRouteOptions,
   MemoryRouteOptions,
   AuditRouteOptions,
@@ -45,4 +51,8 @@ export type {
   SecretRouteOptions,
   MetricsRouteOptions,
   MetricsProvider,
+  VoiceRouteOptions,
+  VoiceRouteLogger,
+  TOTPRouteOptions,
+  TOTPRouteLogger,
 } from './routes/index.js';

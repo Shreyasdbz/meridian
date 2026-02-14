@@ -518,11 +518,57 @@ async function executeJobSteps(
     durationMs: dagResult.durationMs,
   });
 
-  // Step 11: Reflection — stubbed for v0.1
-  // In v0.1, Journal only stores conversation history (already done above via messages table).
-  // When journalSkip is false, a reflection would be triggered (future: dispatch reflect.request to Journal).
+  // Step 11: Reflection + Gear Suggestion (Phase 11.1)
+  // When journalSkip is false, dispatch reflection to Journal.
+  // If Journal handler is registered, it processes the reflection and may suggest Gear.
+  // If Journal is not registered, the dispatch returns an error response (no-op).
   if (!journalSkip) {
-    logger.info('Reflection stub: journalSkip is false, reflection would be triggered', { jobId });
+    try {
+      const reflectRequest: AxisMessage = {
+        id: generateId(),
+        correlationId,
+        timestamp: new Date().toISOString(),
+        from: 'bridge' as ComponentId,
+        to: 'journal' as ComponentId,
+        type: 'reflect.request',
+        jobId,
+        payload: {
+          plan,
+          status: 'completed',
+          userMessage: '', // User message already stored above via messages table
+          assistantResponse: resultSummary,
+          stepResults,
+        },
+      };
+
+      // Dispatch to Journal — if not registered, the router's error middleware
+      // wraps the NotFoundError into an error AxisMessage (non-throwing).
+      const reflectResponse = await router.dispatch(reflectRequest);
+
+      // Skip processing if Journal returned an error (e.g., not registered)
+      if (reflectResponse.type !== 'error') {
+        // Process gear suggestion from reflection
+        if (reflectResponse.payload?.['gearSuggestion']) {
+          // Notify via WebSocket
+          if (bridge) {
+            const suggestion = reflectResponse.payload['gearSuggestion'] as Record<string, unknown>;
+            bridge.wsManager.broadcast({
+              type: 'gear_brief',
+              briefId: (reflectResponse.payload['briefId'] as string | undefined) ?? generateId(),
+              problem: (suggestion['problem'] as string | undefined) ?? '',
+              proposedSolution: (suggestion['proposedSolution'] as string | undefined) ?? '',
+            });
+          }
+        }
+      } else {
+        logger.debug('Journal reflection skipped (handler not registered or error)', { jobId });
+      }
+    } catch (error) {
+      logger.warn('Reflection failed (non-blocking)', {
+        jobId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 }
 
@@ -793,6 +839,7 @@ export async function startMeridian(options?: {
     db,
     logger,
     auditLog: axis.internals.auditLog,
+    workspacePath,
     isReady: () => axis.isReady(),
   });
 

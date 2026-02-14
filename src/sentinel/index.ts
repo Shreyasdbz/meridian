@@ -63,3 +63,10 @@ export {
   parseValidationResponse,
   checkSameProvider,
 } from './llm-validator.js';
+
+// Approval Cache (Phase 11.4)
+export { ApprovalCache } from './approval-cache.js';
+export type {
+  ApprovalCacheConfig,
+  ApprovalCacheLogger,
+} from './approval-cache.js';

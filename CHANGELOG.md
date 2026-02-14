@@ -5,6 +5,22 @@ All notable changes to the Meridian project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-02-14
+
+Gear Suggester, adaptive model selection, MCP compatibility, Gear SDK, voice input, TOTP, and caching infrastructure for v0.4.
+
+### Added
+
+- **Gear Suggester**: End-to-end Gear brief generation from Journal reflections with UI review (Phase 11.1)
+- **Adaptive Model Selection**: Task-type routing between primary and secondary models (Phase 11.1)
+- **MCP Compatibility**: Gear-as-MCP-server and MCP-server-as-Gear adapters (Phase 11.2)
+- **Gear SDK**: Type definitions, manifest schema, and testing utilities for third-party Gear developers (Phase 11.2)
+- **Voice Input**: Web Speech API recording with Whisper transcription integration (Phase 11.3)
+- **TOTP**: Optional two-factor authentication with QR code setup flow (Phase 11.3)
+- **Plan Replay Cache**: Skip Scout for known patterns in repeated scheduled tasks (Phase 11.4)
+- **Semantic Response Cache**: Embedding-based LLM response caching with 0.98 similarity threshold (Phase 11.4)
+- **Sentinel Approval Cache**: Reuse cached approvals for identical scheduled task plans (Phase 11.4)
+
 ## [0.3.0] - 2026-02-14
 
 Memory & Learning: Journal memory system, Sentinel Memory, container sandboxing, encrypted backups, data retention, and the memory browser UI.
@@ -274,6 +290,7 @@ Initial release of Meridian — a self-hosted AI assistant platform with autonom
 - Credential pattern redaction in all log output
 - Shell Gear disabled by default and exempt from auto-approval
 
+[0.4.0]: https://github.com/meridian-ai/meridian/commits/v0.4.0
 [0.3.0]: https://github.com/meridian-ai/meridian/commits/v0.3.0
 [0.2.0]: https://github.com/meridian-ai/meridian/commits/v0.2.0
 [0.1.0]: https://github.com/meridian-ai/meridian/commits/v0.1.0

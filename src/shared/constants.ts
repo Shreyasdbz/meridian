@@ -323,6 +323,55 @@ export const FTS_REBUILD_INTERVAL_DAYS = 7;
 /** Similarity threshold for semantic cache hits */
 export const SEMANTIC_CACHE_SIMILARITY_THRESHOLD = 0.98;
 
+/** Default TTL for semantic cache entries (24 hours in ms) */
+export const SEMANTIC_CACHE_TTL_MS = 86_400_000;
+
+/** Maximum semantic cache entries per user */
+export const SEMANTIC_CACHE_MAX_ENTRIES = 1_000;
+
+// ---------------------------------------------------------------------------
+// Plan replay cache (Section 16 Phase 4 — v0.4)
+// ---------------------------------------------------------------------------
+
+/** Maximum plan replay cache entries */
+export const PLAN_REPLAY_CACHE_MAX_ENTRIES = 500;
+
+/** Plan replay cache TTL (7 days in ms) */
+export const PLAN_REPLAY_CACHE_TTL_MS = 604_800_000;
+
+// ---------------------------------------------------------------------------
+// Sentinel approval cache (v0.4)
+// ---------------------------------------------------------------------------
+
+/** Maximum sentinel approval cache entries */
+export const SENTINEL_APPROVAL_CACHE_MAX_ENTRIES = 200;
+
+/** Sentinel approval cache TTL (24 hours in ms) */
+export const SENTINEL_APPROVAL_CACHE_TTL_MS = 86_400_000;
+
+// ---------------------------------------------------------------------------
+// Voice input (Section 5.5.9 — v0.4)
+// ---------------------------------------------------------------------------
+
+/** Maximum audio upload size (10 MB) */
+export const MAX_VOICE_UPLOAD_BYTES = 10_485_760;
+
+/** Voice transcription timeout (30 seconds) */
+export const VOICE_TRANSCRIPTION_TIMEOUT_MS = 30_000;
+
+// ---------------------------------------------------------------------------
+// TOTP (Section 5.5.13 — v0.4)
+// ---------------------------------------------------------------------------
+
+/** TOTP token validity window (30 seconds) */
+export const TOTP_PERIOD_SECONDS = 30;
+
+/** TOTP digits */
+export const TOTP_DIGITS = 6;
+
+/** TOTP algorithm */
+export const TOTP_ALGORITHM = 'SHA1';
+
 // ---------------------------------------------------------------------------
 // Data retention defaults (Section 7.4)
 // ---------------------------------------------------------------------------

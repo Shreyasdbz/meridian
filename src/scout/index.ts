@@ -69,6 +69,17 @@ export type {
   PlanningFailureState,
 } from './failure-handler.js';
 
+// Adaptive model routing (Phase 11.1)
+export {
+  ModelRouter,
+  classifyTaskComplexity,
+  selectModelTier,
+} from './model-router.js';
+export type {
+  ModelRouterConfig,
+  ModelRouterLogger,
+} from './model-router.js';
+
 // External content provenance (Phase 3.4)
 export {
   wrapWithProvenance,
@@ -87,3 +98,25 @@ export type {
   ProvenanceAttributes,
   ProvenanceWrappedContent,
 } from './provenance.js';
+
+// MCP tool-use integration (Phase 11.2, Section 9.4)
+export {
+  gearToMCPTools,
+  mcpToProviderTools,
+  supportsNativeMCP,
+} from './mcp-tool-use.js';
+
+// Plan Replay Cache (Phase 11.4)
+export { PlanReplayCache } from './plan-replay-cache.js';
+export type {
+  PlanReplayCacheConfig,
+  PlanReplayCacheLogger,
+} from './plan-replay-cache.js';
+
+// Semantic Response Cache (Phase 11.4)
+export { SemanticCache } from './semantic-cache.js';
+export type {
+  SemanticCacheConfig,
+  SemanticCacheLogger,
+  EmbeddingProviderLike,
+} from './semantic-cache.js';

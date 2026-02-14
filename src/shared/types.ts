@@ -358,7 +358,8 @@ export type WSMessage =
   | WSProgressMessage
   | WSConnectedMessage
   | WSPingMessage
-  | WSPongMessage;
+  | WSPongMessage
+  | WSGearBriefMessage;
 
 export interface WSChunkMessage {
   type: 'chunk';
@@ -430,6 +431,94 @@ export interface WSPingMessage {
 export interface WSPongMessage {
   type: 'pong';
   metadata?: Record<string, unknown>;
+}
+
+export interface WSGearBriefMessage {
+  type: 'gear_brief';
+  briefId: string;
+  problem: string;
+  proposedSolution: string;
+  metadata?: Record<string, unknown>;
+}
+
+// ---------------------------------------------------------------------------
+// Model routing (Section 5.2.6 — v0.4 adaptive model selection)
+// ---------------------------------------------------------------------------
+
+export type ModelTier = 'primary' | 'secondary';
+
+export type TaskComplexity =
+  | 'simple_gear_op'
+  | 'summarization'
+  | 'parsing'
+  | 'parameter_generation'
+  | 'multi_step_planning'
+  | 'complex_reasoning'
+  | 'replanning'
+  | 'novel_request';
+
+export interface ModelRoutingDecision {
+  tier: ModelTier;
+  model: string;
+  reason: string;
+  taskComplexity: TaskComplexity;
+}
+
+// ---------------------------------------------------------------------------
+// Semantic cache (Section 11.2 — v0.4)
+// ---------------------------------------------------------------------------
+
+export interface SemanticCacheEntry {
+  id: string;
+  queryEmbedding: number[];
+  response: string;
+  model: string;
+  createdAt: string;
+  expiresAt: string;
+  metadata?: Record<string, unknown>;
+}
+
+// ---------------------------------------------------------------------------
+// Plan replay cache (Section 16 Phase 4 — v0.4)
+// ---------------------------------------------------------------------------
+
+export interface PlanReplayCacheEntry {
+  id: string;
+  inputHash: string;
+  plan: ExecutionPlan;
+  approvalHash?: string;
+  createdAt: string;
+  hitCount: number;
+  lastHitAt: string;
+  metadata?: Record<string, unknown>;
+}
+
+// ---------------------------------------------------------------------------
+// MCP compatibility (Section 9.4 — v0.4)
+// ---------------------------------------------------------------------------
+
+export interface MCPToolDefinition {
+  name: string;
+  description: string;
+  inputSchema: Record<string, unknown>;
+}
+
+export interface MCPServerConfig {
+  name: string;
+  command: string;
+  args?: string[];
+  env?: Record<string, string>;
+}
+
+// ---------------------------------------------------------------------------
+// Voice input (Section 5.5.9 — v0.4)
+// ---------------------------------------------------------------------------
+
+export interface VoiceTranscriptionResult {
+  text: string;
+  confidence: number;
+  durationMs: number;
+  language?: string;
 }
 
 // ---------------------------------------------------------------------------

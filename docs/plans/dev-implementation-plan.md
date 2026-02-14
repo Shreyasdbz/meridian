@@ -2774,6 +2774,59 @@ The following deviations from the original plan were made during Phase 10 implem
 
 ---
 
+### Phase 11 — Implementation Deviations & Notes
+
+The following deviations from the original plan were made during Phase 11 implementation:
+
+#### 11.1 — Gear Suggester Activation
+
+- **Plan**: "User actions: implement from brief, refine brief, dismiss" and "Journal notes rejection when dismissed"
+- **Implemented**: Gear brief review UI shows briefs with dismiss action. The "implement from brief" and "refine brief" actions are displayed as placeholder buttons — actual Gear code generation from briefs is not implemented (that would require LLM code generation which is a Gear Suggester Phase 2 feature per architecture Section 5.4.4). The dismiss action deletes the brief file.
+- **Rationale**: The architecture says the Gear Suggester produces "briefs, not code" (Section 5.4.4). The implement/refine actions in the plan are UI affordances for a future code generation feature. The v0.4 scope correctly focuses on brief generation and review.
+
+#### 11.1 — Model Router
+
+- **Plan**: "Model decision logged in job metadata"
+- **Implemented**: Model routing decision is logged via the Scout logger. The decision is included in the plan request to the Planner (which passes it through to the LLM provider), but is not yet written to job metadata in the database. This is because the Scout component does not have direct database access — it communicates via Axis messages.
+- **Rationale**: Following the component boundary rules: Scout depends only on `shared/`, not on `axis/` database infrastructure. Persisting the decision to job metadata requires Axis to extract it from the plan response payload, which can be added as a follow-up.
+
+#### 11.2 — Gear SDK Packaging
+
+- **Plan**: "Standalone npm package for third-party Gear developers" (`@meridian/gear-sdk`)
+- **Implemented**: SDK types, manifest schema, and testing utilities are implemented under `src/gear/sdk/` and exported through `src/gear/index.ts`. The code is not published as a separate npm package.
+- **Rationale**: The project uses a single-package structure (per CLAUDE.md: "Single package over npm workspaces: simpler tooling pre-1.0, split when concrete need arises"). Publishing `@meridian/gear-sdk` as a standalone npm package requires build infrastructure, versioning, and npm publishing setup that is deferred until there are actual third-party Gear developers. The types and utilities are ready to extract.
+
+#### 11.2 — SDK Documentation and Examples
+
+- **Plan**: "Documentation and examples"
+- **Implemented**: Not created as separate documentation files.
+- **Rationale**: JSDoc comments on all exported types and functions provide API documentation. Standalone Markdown guides and example Gear are deferred until the SDK is published as a separate package.
+
+#### 11.3 — Voice Input Recording
+
+- **Plan**: "Web Speech API for recording"
+- **Implemented**: Uses `MediaRecorder` API (part of the broader Web APIs) for audio recording, not the Web Speech API specifically. The recorded audio is sent to a Whisper endpoint for transcription.
+- **Rationale**: Web Speech API (`SpeechRecognition`) does browser-side speech recognition, which is limited and not available in all browsers. `MediaRecorder` + server-side Whisper provides better accuracy, language support, and works consistently across browsers. This aligns with architecture Section 5.5.9 which specifies "Whisper API" for transcription.
+
+#### 11.3 — TOTP QR Code
+
+- **Plan**: "QR code generation for authenticator apps"
+- **Implemented**: TOTP setup returns the raw secret and `otpauth://` URI. The frontend TOTP section displays the secret for manual entry. QR code rendering (converting the URI to a QR image) is deferred.
+- **Rationale**: QR code generation requires an additional dependency (`qrcode` or similar). The `otpauth://` URI is returned by the API and can be used by the frontend to generate a QR code when the dependency is added. Manual secret entry works as a functional alternative.
+
+#### 11.3 — Permissions-Policy Header
+
+- **Implemented**: Changed `Permissions-Policy` header from `microphone=()` to `microphone=(self)` to allow the voice input feature to access the microphone from the same origin.
+- **Rationale**: Voice recording requires microphone access. The `(self)` restriction ensures only the Meridian origin can use the microphone, maintaining security while enabling the feature.
+
+#### 11.4 — Git Tag
+
+- **Plan**: "tag and build v0.4.0"
+- **Implemented**: CHANGELOG updated with v0.4.0 entry. Git tag not created.
+- **Rationale**: Git tagging deferred to explicit user request, consistent with v0.1, v0.2, and v0.3 releases.
+
+---
+
 ## Appendix A: Deferred Items & Feasibility Notes
 
 ### Deferred Indefinitely (v1.0+)

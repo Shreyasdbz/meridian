@@ -25,6 +25,7 @@ export { ThemeProvider } from './components/theme-provider.js';
 export { Layout } from './components/layout.js';
 export { ErrorDisplay } from './components/error-display/index.js';
 export { CommandPalette } from './components/command-palette/index.js';
+export { VoiceInput } from './components/voice-input/index.js';
 
 // Vocabulary
 export {

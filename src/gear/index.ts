@@ -130,6 +130,46 @@ export type {
 // Phase 5.3: Gear runtime — runs inside the sandbox process
 export { startRuntime } from './sandbox/gear-runtime.js';
 
+// Phase 11.2: MCP compatibility layer (Section 9.4)
+export {
+  gearActionToMCPTool,
+  manifestToMCPTools,
+  MCPServerAdapter,
+  mcpToolToGearAction,
+  discoverMCPServer,
+  MCPGearAdapter,
+} from './mcp/index.js';
+export type {
+  MCPServerAdapterConfig,
+  MCPServerAdapterLogger,
+  MCPRequest,
+  MCPResponse,
+  MCPError,
+  MCPToolResult,
+  MCPToolExecutor,
+  MCPGearAdapterConfig,
+  MCPGearAdapterLogger,
+  MCPTransport,
+} from './mcp/index.js';
+
+// Phase 11.2: Gear SDK (Section 9.4)
+export {
+  GEAR_MANIFEST_SCHEMA,
+  validateManifest as validateManifestSchema,
+  createMockContext,
+  getMockTestData,
+  createTestManifest,
+  validateHandler,
+} from './sdk/index.js';
+export type {
+  GearHandler,
+  GearResult,
+  GearDefinition,
+  ManifestValidationResult,
+  MockContextTestData,
+  HandlerValidationResult,
+} from './sdk/index.js';
+
 // ---------------------------------------------------------------------------
 // Phase 5.7: Gear Integration — createGearRuntime()
 // ---------------------------------------------------------------------------

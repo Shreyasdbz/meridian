@@ -44,3 +44,12 @@ export type { TrustRouteOptions } from './trust.js';
 
 export { dataRoutes } from './data.js';
 export type { DataRouteOptions } from './data.js';
+
+export { gearBriefRoutes } from './gear-briefs.js';
+export type { GearBriefRouteOptions } from './gear-briefs.js';
+
+export { registerVoiceRoutes } from './voice.js';
+export type { VoiceRouteOptions, VoiceRouteLogger } from './voice.js';
+
+export { registerTOTPRoutes, isTOTPEnabled, validateTOTPToken } from './totp.js';
+export type { TOTPRouteOptions, TOTPRouteLogger } from './totp.js';

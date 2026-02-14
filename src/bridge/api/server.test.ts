@@ -159,7 +159,7 @@ describe('Server — security headers', () => {
       url: '/api/auth/status',
     });
 
-    expect(response.headers['permissions-policy']).toBe('camera=(), microphone=(), geolocation=()');
+    expect(response.headers['permissions-policy']).toBe('camera=(), microphone=(self), geolocation=()');
 
     await server.close();
   });
