@@ -2,9 +2,11 @@
 // Polls for due schedules and creates jobs through the job queue.
 
 import type { DatabaseClient } from '@meridian/shared';
-import { SCHEDULE_EVAL_INTERVAL_MS } from '@meridian/shared';
-
-import { getNextRun, parseCronExpression } from './cron-parser.js';
+import {
+  SCHEDULE_EVAL_INTERVAL_MS,
+  getNextRun,
+  parseCronExpression,
+} from '@meridian/shared';
 
 // ---------------------------------------------------------------------------
 // Types

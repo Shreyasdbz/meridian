@@ -12,6 +12,7 @@ import { useJobStore } from '../../stores/job-store.js';
 import { useUIStore } from '../../stores/ui-store.js';
 
 import { ActiveTasksSection } from './active-tasks-section.js';
+import { CostSummarySection } from './cost-summary-section.js';
 import { JobInspector } from './job-inspector.js';
 import { PendingApprovalsSection } from './pending-approvals-section.js';
 import { RecentCompletionsSection } from './recent-completions-section.js';
@@ -155,8 +156,11 @@ export function MissionControl(): React.ReactElement {
             {/* Recent Completions */}
             <RecentCompletionsSection jobs={recentCompletions} onSelectJob={setInspectedJobId} />
 
-            {/* Scheduled Jobs (v0.2 placeholder) */}
+            {/* Scheduled Jobs */}
             <ScheduledJobsSection />
+
+            {/* Cost Tracking (Phase 9.5) */}
+            <CostSummarySection />
 
             {/* System Health */}
             <SystemHealthSection connectionState={connectionState} />

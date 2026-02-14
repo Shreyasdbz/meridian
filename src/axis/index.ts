@@ -123,13 +123,13 @@ export type {
 export { MetricsCollector } from './metrics.js';
 export type { MetricsCollectorOptions } from './metrics.js';
 
-// Cron scheduling (Phase 9.4)
+// Cron scheduling (Phase 9.4) — re-exported from shared
 export {
   parseCronExpression,
   isValidCronExpression,
   getNextRun,
-} from './cron-parser.js';
-export type { CronSchedule } from './cron-parser.js';
+} from '@meridian/shared';
+export type { CronSchedule } from '@meridian/shared';
 
 export { ScheduleEvaluator } from './schedule-evaluator.js';
 export type {

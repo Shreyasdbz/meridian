@@ -291,6 +291,14 @@ export type {
   CostAlertLevel,
 } from './cost-tracker.js';
 
+// Cron scheduling (Phase 9.4)
+export {
+  parseCronExpression,
+  isValidCronExpression,
+  getNextRun,
+} from './cron-parser.js';
+export type { CronSchedule } from './cron-parser.js';
+
 // Ed25519 signing (Section 6.3, v0.2)
 export type {
   Ed25519Keypair,

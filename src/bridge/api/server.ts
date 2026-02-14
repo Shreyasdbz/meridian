@@ -3,6 +3,8 @@
 // credential filtering, and system prompt leakage detection.
 
 import { existsSync } from 'node:fs';
+import type { Server as HttpServer } from 'node:http';
+import type { Server as HttpsServer } from 'node:https';
 import { join } from 'node:path';
 
 import cookie from '@fastify/cookie';
@@ -46,6 +48,7 @@ import {
   scheduleRoutes,
   costRoutes,
 } from './routes/index.js';
+import { buildHstsHeader, buildHttpsOptions, shouldAddHsts } from './tls.js';
 import { type WebSocketManager, websocketRoutes } from './websocket.js';
 
 // ---------------------------------------------------------------------------
@@ -174,10 +177,15 @@ export async function createServer(options: CreateServerOptions): Promise<{
 }> {
   const { config, db, logger, rateLimitMax, disableRateLimit, auditLog, vault, metricsProvider, costTracker, version, isReady, getComponentStatus, maxWsConnections } = options;
 
+  // ----- TLS (Phase 9.7) -----
+  const httpsOptions = buildHttpsOptions(config, logger);
+  const isTls = !!httpsOptions;
+
   const server = Fastify({
     logger: false, // We use our own logger
     trustProxy: false,
-  });
+    ...(httpsOptions ? { https: httpsOptions } : {}),
+  }) as FastifyInstance<HttpsServer | HttpServer>;
 
   // ----- Cookie plugin (for session cookies) -----
   await server.register(cookie);
@@ -186,8 +194,9 @@ export async function createServer(options: CreateServerOptions): Promise<{
   await server.register(websocket);
 
   // ----- CORS (Section 6.5.1) — exact origin only, no wildcard -----
+  const protocol = isTls ? 'https' : 'http';
   await server.register(cors, {
-    origin: `http://${config.bind}:${config.port}`,
+    origin: `${protocol}://${config.bind}:${config.port}`,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token'],
@@ -205,6 +214,10 @@ export async function createServer(options: CreateServerOptions): Promise<{
   server.addHook('onSend', async (_request: FastifyRequest, reply: FastifyReply) => {
     for (const [header, value] of Object.entries(SECURITY_HEADERS)) {
       reply.header(header, value);
+    }
+    // HSTS header when TLS is active (Phase 9.7)
+    if (shouldAddHsts(config)) {
+      reply.header('Strict-Transport-Security', buildHstsHeader(config));
     }
   });
 
@@ -495,10 +508,12 @@ export async function createBridgeServer(
 
     async start(): Promise<void> {
       await server.listen({ port: config.port, host: config.bind });
+      const tlsEnabled = !!config.tls?.enabled;
       logger.info('Bridge server started', {
         component: 'bridge',
         bind: config.bind,
         port: config.port,
+        tls: tlsEnabled,
       });
     },
 
@@ -525,16 +540,22 @@ async function createServerWithAxis(options: CreateServerOptions & { axis: AxisA
     version, isReady, getComponentStatus, maxWsConnections,
   } = options;
 
+  // ----- TLS (Phase 9.7) -----
+  const httpsOptions = buildHttpsOptions(config, logger);
+  const isTls = !!httpsOptions;
+
   const server = Fastify({
     logger: false,
     trustProxy: false,
-  });
+    ...(httpsOptions ? { https: httpsOptions } : {}),
+  }) as FastifyInstance<HttpsServer | HttpServer>;
 
   // ----- Plugins -----
   await server.register(cookie);
   await server.register(websocket);
+  const protocol = isTls ? 'https' : 'http';
   await server.register(cors, {
-    origin: `http://${config.bind}:${config.port}`,
+    origin: `${protocol}://${config.bind}:${config.port}`,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token'],
@@ -551,6 +572,10 @@ async function createServerWithAxis(options: CreateServerOptions & { axis: AxisA
   server.addHook('onSend', async (_request: FastifyRequest, reply: FastifyReply) => {
     for (const [header, value] of Object.entries(SECURITY_HEADERS)) {
       reply.header(header, value);
+    }
+    // HSTS header when TLS is active (Phase 9.7)
+    if (shouldAddHsts(config)) {
+      reply.header('Strict-Transport-Security', buildHstsHeader(config));
     }
   });
 

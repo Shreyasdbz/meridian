@@ -477,13 +477,42 @@ describe('RecentCompletionsSection', () => {
 // ===========================================================================
 
 describe('ScheduledJobsSection', () => {
-  it('should render empty state when no schedules exist', () => {
+  it('should render empty state when no schedules exist', async () => {
+    mockApiGet.mockResolvedValueOnce({ items: [], total: 0 });
+
     render(<ScheduledJobsSection />);
 
     expect(screen.getByText('Scheduled Jobs')).toBeInTheDocument();
-    expect(
-      screen.getByText('No scheduled jobs configured'),
-    ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        screen.getByText('No scheduled jobs configured'),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it('should render schedule rows after loading', async () => {
+    mockApiGet.mockResolvedValueOnce({
+      items: [
+        {
+          id: 'sched-1',
+          name: 'Daily backup',
+          cronExpression: '0 2 * * *',
+          jobTemplate: {},
+          enabled: true,
+          lastRunAt: null,
+          nextRunAt: new Date(Date.now() + 3_600_000).toISOString(),
+          createdAt: '2026-02-14T00:00:00.000Z',
+        },
+      ],
+      total: 1,
+    });
+
+    render(<ScheduledJobsSection />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Daily backup')).toBeInTheDocument();
+    });
+    expect(screen.getByText('0 2 * * *')).toBeInTheDocument();
   });
 });
 

@@ -1,8 +1,16 @@
 // Scheduled Jobs section of Mission Control (Phase 9.4).
 // Displays cron schedules with name, expression, next run, toggle, and delete.
 
+import { useEffect } from 'react';
+
+import { api } from '../../hooks/use-api.js';
 import { useScheduleStore } from '../../stores/schedule-store.js';
 import type { Schedule } from '../../stores/schedule-store.js';
+
+interface SchedulesResponse {
+  items: Schedule[];
+  total: number;
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -104,6 +112,25 @@ function ScheduleRow({
 export function ScheduledJobsSection(): React.ReactElement {
   const schedules = useScheduleStore((s) => s.schedules);
   const isLoading = useScheduleStore((s) => s.isLoading);
+  const setSchedules = useScheduleStore((s) => s.setSchedules);
+  const setLoading = useScheduleStore((s) => s.setLoading);
+
+  // --- Load schedules on mount ---
+  useEffect(() => {
+    const loadSchedules = async (): Promise<void> => {
+      setLoading(true);
+      try {
+        const data = await api.get<SchedulesResponse>('/schedules');
+        setSchedules(data.items);
+      } catch {
+        // Failed to load — section will show empty state
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    void loadSchedules();
+  }, [setSchedules, setLoading]);
 
   const handleToggle = async (id: string): Promise<void> => {
     try {

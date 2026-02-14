@@ -18,8 +18,8 @@
 import { existsSync, mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import { createAxis } from '@meridian/axis';
-import type { Axis, JobProcessor } from '@meridian/axis';
+import { createAxis, DagExecutor, ConditionEvaluator } from '@meridian/axis';
+import type { Axis, JobProcessor, StepResult } from '@meridian/axis';
 import { createBridgeServer } from '@meridian/bridge';
 import type { BridgeServer } from '@meridian/bridge';
 import { createGearRuntime, loadBuiltinManifests } from '@meridian/gear';
@@ -392,18 +392,29 @@ async function executeJobSteps(
   bridge: BridgeServer | undefined,
   conversationId: string | undefined,
 ): Promise<void> {
-  const stepResults: Array<{
-    stepId: string;
-    result?: unknown;
-    error?: { code: string; message: string };
-  }> = [];
+  // v0.2: Use DAG executor for dependency-aware parallel step execution
+  const conditionEvaluator = new ConditionEvaluator();
+  const dagExecutor = new DagExecutor({
+    maxConcurrency: 4,
+    evaluateCondition: (condition, results) => {
+      // Adapt DagExecutor's StepResult map to ConditionEvaluator's StepResultRef map
+      const refs = new Map<string, { stepId: string; status: 'completed' | 'failed' | 'skipped'; result?: Record<string, unknown> }>();
+      for (const [id, sr] of results) {
+        refs.set(id, { stepId: sr.stepId, status: sr.status, result: sr.result });
+      }
+      return conditionEvaluator.evaluate(condition, refs);
+    },
+    logger: {
+      info: (...args: unknown[]): void => { logger.info(String(args[0]), args[1] as Record<string, unknown>); },
+      warn: (...args: unknown[]): void => { logger.warn(String(args[0]), args[1] as Record<string, unknown>); },
+      error: (...args: unknown[]): void => { logger.error(String(args[0]), args[1] as Record<string, unknown>); },
+    },
+  });
 
-  for (const step of plan.steps) {
-    if (signal.aborted) {
-      await jobQueue.transition(jobId, 'executing', 'cancelled');
-      return;
-    }
-
+  // Step executor: dispatches each step to the Gear runtime via Axis router
+  const stepExecutor = async (
+    step: { id: string; gear: string; action: string; parameters: Record<string, unknown> },
+  ): Promise<Record<string, unknown>> => {
     const executeRequest: AxisMessage = {
       id: generateId(),
       correlationId,
@@ -420,54 +431,36 @@ async function executeJobSteps(
       },
     };
 
-    try {
-      const executeResponse = await router.dispatch(executeRequest);
-      const responsePayload = executeResponse.payload;
+    const executeResponse = await router.dispatch(executeRequest);
+    const responsePayload = executeResponse.payload;
 
-      if (responsePayload?.['error']) {
-        const gearError = responsePayload['error'] as { code: string; message: string };
-        stepResults.push({ stepId: step.id, error: gearError });
-        logger.warn('Gear execution step failed', {
-          jobId,
-          stepId: step.id,
-          gear: step.gear,
-          error: gearError.message,
-        });
-        // Continue to next step or fail job based on the error
-        // For v0.1, fail the job on any step failure
-        break;
-      }
-
-      stepResults.push({
-        stepId: step.id,
-        result: responsePayload?.['result'],
-      });
-
-      logger.info('Gear execution step completed', {
-        jobId,
-        stepId: step.id,
-        gear: step.gear,
-      });
-    } catch (error: unknown) {
-      // Gear sandbox failure — graceful degradation (Section 4.4)
-      const message = error instanceof Error ? error.message : String(error);
-      stepResults.push({
-        stepId: step.id,
-        error: { code: 'GEAR_EXECUTION_FAILED', message },
-      });
-      logger.error('Gear execution failed', { jobId, stepId: step.id, error: message });
-      break;
+    if (responsePayload?.['error']) {
+      const gearError = responsePayload['error'] as { code: string; message: string };
+      throw new Error(gearError.message);
     }
-  }
 
-  // Check if any step failed
-  const failedStep = stepResults.find((s) => s.error);
-  if (failedStep) {
+    const result = responsePayload?.['result'] as Record<string, unknown> | undefined;
+    return result ?? {};
+  };
+
+  const dagResult = await dagExecutor.execute(plan.steps, stepExecutor, signal);
+
+  // Convert DAG results to legacy format for job metadata
+  const stepResults = dagResult.stepResults.map((sr: StepResult) => ({
+    stepId: sr.stepId,
+    result: sr.result,
+    error: sr.error ? { code: 'GEAR_EXECUTION_FAILED', message: sr.error } : undefined,
+  }));
+
+  // Handle overall DAG result
+  if (dagResult.status === 'failed' || dagResult.status === 'partial') {
+    const failedStep = stepResults.find((s) => s.error);
+
     await jobQueue.transition(jobId, 'executing', 'failed', {
       result: { steps: stepResults },
       error: {
-        code: failedStep.error?.code ?? 'GEAR_EXECUTION_FAILED',
-        message: failedStep.error?.message ?? 'Gear execution failed',
+        code: failedStep?.error?.code ?? 'GEAR_EXECUTION_FAILED',
+        message: failedStep?.error?.message ?? 'Gear execution failed',
         retriable: true,
       },
     });
@@ -477,10 +470,16 @@ async function executeJobSteps(
       bridge.wsManager.broadcast({
         type: 'error',
         jobId,
-        code: failedStep.error?.code ?? 'GEAR_EXECUTION_FAILED',
-        message: failedStep.error?.message ?? 'Execution failed',
+        code: failedStep?.error?.code ?? 'GEAR_EXECUTION_FAILED',
+        message: failedStep?.error?.message ?? 'Execution failed',
       });
     }
+    return;
+  }
+
+  // Handle cancellation (all steps skipped due to abort)
+  if (signal.aborted) {
+    await jobQueue.transition(jobId, 'executing', 'cancelled');
     return;
   }
 
@@ -489,6 +488,7 @@ async function executeJobSteps(
 
   // Store assistant response summarizing results
   const resultSummary = stepResults
+    .filter((s) => !s.error)
     .map((s) => `Step ${s.stepId}: ${JSON.stringify(s.result)}`)
     .join('\n');
 
@@ -513,7 +513,9 @@ async function executeJobSteps(
   logger.info('Job completed via full path', {
     jobId,
     stepCount: plan.steps.length,
-    completedSteps: stepResults.length,
+    completedSteps: stepResults.filter((s) => !s.error).length,
+    skippedSteps: dagResult.stepResults.filter((sr: StepResult) => sr.status === 'skipped').length,
+    durationMs: dagResult.durationMs,
   });
 
   // Step 11: Reflection — stubbed for v0.1

@@ -2353,10 +2353,39 @@
   - [x] Cron scheduling creates and triggers jobs
   - [x] Cost tracking displays accurate per-task costs
   - [x] Multi-provider support works with all 5 providers
-  - [x] TLS configuration functional with Let's Encrypt
+  - [x] TLS configuration functional with user-provided certificates (ACME/Let's Encrypt deferred to v0.3)
   - [x] Circuit breaker activates after consecutive failures
 - Verify all module boundaries still enforced (`dependency-cruiser`)
 - Tag and build v0.2.0
+
+---
+
+### Phase 9 — Implementation Deviations & Notes
+
+The following deviations from the original plan were made during Phase 9 implementation:
+
+#### 9.3 — Web Search Engine Choice
+
+- **Plan**: "Search via SearXNG or similar privacy-respecting engine"
+- **Implemented**: `web-search` Gear uses DuckDuckGo's HTML endpoint (`html.duckduckgo.com`)
+- **Rationale**: DuckDuckGo provides a direct, no-registration-required HTML search interface that does not require running a separate SearXNG instance. This simplifies deployment on low-power devices by eliminating a ~150MB sidecar service. DuckDuckGo is privacy-respecting. Users requiring SearXNG integration can implement a custom web-search Gear variant in v0.3+.
+
+#### 9.7 — TLS Advanced Features Deferred
+
+- **Plan**: OCSP stapling for Let's Encrypt; Let's Encrypt ACME support or user-provided certificate
+- **Implemented**: TLS with user-provided certificates only. HSTS headers fully implemented. OCSP stapling and ACME/Let's Encrypt not implemented.
+- **Rationale**: v0.2 prioritizes a minimal, self-contained TLS implementation suitable for local/VPS deployments with pre-provisioned certificates. ACME adds external dependencies inappropriate for the core v0.2 scope. Recommended approach for internet-facing deployments: use Caddy/nginx reverse proxy with built-in ACME. ACME integration is a candidate for v0.3.
+
+#### 9.8 — Database Encryption Cipher Documentation
+
+- **Plan**: AES-256-CBC encryption with HMAC-SHA512 per page (via SQLCipher)
+- **Note**: Code comment in `src/shared/database/encryption.ts` originally stated "AES-256-GCM" which was incorrect. Corrected to "AES-256-CBC with HMAC-SHA512" to match the actual SQLCipher v4 behavior. No functional impact — the implementation was correct, only the comment was wrong.
+
+#### 9.4/9.5 — Cron Parser Module Location
+
+- **Plan**: Cron parser implemented in `src/axis/`
+- **Implemented**: Moved to `src/shared/cron-parser.ts` during validation
+- **Rationale**: The cron parser is a pure utility with zero dependencies. Both Axis (schedule evaluator) and Bridge (schedule REST routes) need it. Placing it in `shared/` avoids a `bridge → axis` module boundary violation. Axis re-exports the cron functions for backward compatibility.
 
 ---
 

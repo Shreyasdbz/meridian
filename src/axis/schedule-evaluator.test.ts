@@ -10,7 +10,11 @@ import type {
 // Mock cron-parser (avoid real cron logic in unit tests)
 // ---------------------------------------------------------------------------
 
-vi.mock('./cron-parser.js', () => ({
+vi.mock('@meridian/shared', async (importOriginal) => {
+  // eslint-disable-next-line @typescript-eslint/consistent-type-imports
+  const actual = await importOriginal<typeof import('@meridian/shared')>();
+  return {
+    ...actual,
   parseCronExpression: vi.fn().mockReturnValue({
     minutes: new Set([0]),
     hours: new Set([0]),
@@ -20,7 +24,8 @@ vi.mock('./cron-parser.js', () => ({
     expression: '0 0 * * *',
   }),
   getNextRun: vi.fn().mockReturnValue(new Date('2026-02-14T00:00:00.000Z')),
-}));
+  };
+});
 
 // ---------------------------------------------------------------------------
 // Types
@@ -367,7 +372,7 @@ describe('ScheduleEvaluator', () => {
     });
 
     it('should handle invalid cron expression when computing next run', async () => {
-      const { parseCronExpression } = await import('./cron-parser.js');
+      const { parseCronExpression } = await import('@meridian/shared');
       (
         parseCronExpression as ReturnType<typeof vi.fn>
       ).mockImplementationOnce(() => {

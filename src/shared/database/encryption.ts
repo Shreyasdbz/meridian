@@ -1,6 +1,6 @@
 // @meridian/shared — Optional database encryption (Phase 9.8)
 // Provides SQLCipher integration via dynamic import for encrypted databases.
-// When enabled, databases are encrypted at rest using AES-256-GCM (via SQLCipher)
+// When enabled, databases are encrypted at rest using AES-256-CBC with HMAC-SHA512 (via SQLCipher)
 // with keys derived from a master passphrase using Argon2id.
 
 // ---------------------------------------------------------------------------

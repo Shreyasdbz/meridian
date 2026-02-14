@@ -1716,7 +1716,7 @@ Meridian ships with a deliberately minimal set of built-in Gear (plugins). This 
 | Gear | Purpose | Risk Level |
 |------|---------|------------|
 | `file-manager` | Read, write, list, and organize files in the workspace | Medium |
-| `web-search` | Search the web using a privacy-respecting engine (SearXNG or similar) | Low |
+| `web-search` | Search the web using a privacy-respecting engine (DuckDuckGo HTML endpoint) | Low |
 | `web-fetch` | Fetch and parse web page content | Low |
 | `shell` | Execute shell commands (requires explicit user approval per-command) | Critical |
 | `scheduler` | Create, update, and delete scheduled jobs | Medium |
@@ -1928,7 +1928,7 @@ interface Secret {
 ### 6.5 Network Security
 
 - **Default bind**: Bridge (UI/API gateway) listens on `127.0.0.1` only. Not `0.0.0.0`. Remote access requires explicit configuration.
-- **TLS**: When remote access is enabled, TLS is mandatory. Meridian can use Let's Encrypt via ACME, or a user-provided certificate.
+- **TLS**: When remote access is enabled, TLS is mandatory. v0.2 supports user-provided certificates with configurable min TLS version and HSTS. ACME/Let's Encrypt integration is planned for v0.3; in the meantime, a reverse proxy (Caddy/nginx) with built-in ACME is the recommended approach for internet-facing deployments.
 - **Reverse proxy support**: Documentation provides hardened Nginx/Caddy configurations for remote access.
 - **Gear network filtering**: A local proxy intercepts all Gear (plugin) network requests, allowing only declared domains. DNS resolution is also filtered to prevent DNS rebinding attacks.
 - **No SSRF**: Axis (runtime) validates all URLs before passing them to Gear. Private IP ranges (10.x, 172.16.x, 192.168.x, 127.x) are blocked by default for Gear network requests, with explicit opt-in for home automation use cases.
@@ -1965,7 +1965,7 @@ When TLS is enabled (required for remote access):
 - **Minimum version**: TLS 1.2. TLS 1.3 is recommended and preferred when both client and server support it.
 - **Cipher suites**: Only AEAD cipher suites are permitted: AES-128-GCM, AES-256-GCM, ChaCha20-Poly1305.
 - **HSTS**: `Strict-Transport-Security: max-age=63072000; includeSubDomains` is set on all responses.
-- **OCSP stapling**: Enabled when using Let's Encrypt certificates for faster TLS handshakes and reduced privacy exposure.
+- **OCSP stapling**: Planned for v0.3 alongside Let's Encrypt ACME integration. Not available in v0.2.
 
 #### 6.5.4 CSRF Protection
 
@@ -2571,7 +2571,7 @@ volumes:
   meridian-workspace:
 ```
 
-> **Implementation note**: The actual `docker/docker-compose.yml` extends this example with a healthcheck, Docker Compose profiles (SearXNG is opt-in via `--profile search`), and a `build` section for building from source.
+> **Implementation note**: The actual `docker/docker-compose.yml` extends this example with a healthcheck and a `build` section for building from source. The `web-search` Gear uses DuckDuckGo's HTML endpoint by default, eliminating the need for a SearXNG sidecar service. A SearXNG profile may be added in a future version for users who prefer self-hosted search.
 
 ### 10.4 Configuration
 

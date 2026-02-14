@@ -260,7 +260,9 @@ describe('Security — session hijacking resistance', () => {
 // ---------------------------------------------------------------------------
 
 describe('Security — brute-force protection', () => {
-  it('should allow login attempts below threshold', async () => {
+  // These tests create real Fastify servers with bcrypt hashing + multiple
+  // sequential requests, so they need more headroom than the default 5s.
+  it('should allow login attempts below threshold', { timeout: 15_000 }, async () => {
     const { server } = await createServer({
       config: TEST_CONFIG,
       db,
@@ -295,7 +297,7 @@ describe('Security — brute-force protection', () => {
     await server.close();
   });
 
-  it('should rate-limit after exceeding threshold', async () => {
+  it('should rate-limit after exceeding threshold', { timeout: 15_000 }, async () => {
     const { server } = await createServer({
       config: TEST_CONFIG,
       db,
@@ -331,7 +333,7 @@ describe('Security — brute-force protection', () => {
     await server.close();
   });
 
-  it('should include retryAfterMs in rate-limited responses', async () => {
+  it('should include retryAfterMs in rate-limited responses', { timeout: 15_000 }, async () => {
     const { server } = await createServer({
       config: TEST_CONFIG,
       db,
@@ -369,7 +371,7 @@ describe('Security — brute-force protection', () => {
     await server.close();
   });
 
-  it('should clear failed attempts on successful login', async () => {
+  it('should clear failed attempts on successful login', { timeout: 15_000 }, async () => {
     const { server } = await createServer({
       config: TEST_CONFIG,
       db,

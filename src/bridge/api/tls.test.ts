@@ -5,25 +5,7 @@ import { describe, it, expect } from 'vitest';
 
 import type { BridgeConfig } from '@meridian/shared';
 
-/**
- * Determine whether the HSTS (Strict-Transport-Security) header should be
- * added based on the Bridge TLS configuration.
- *
- * HSTS is enabled by default when TLS is active unless explicitly disabled
- * via `tls.hsts: false`.
- */
-function shouldAddHsts(config: BridgeConfig): boolean {
-  return !!config.tls?.enabled && config.tls.hsts !== false;
-}
-
-/**
- * Compute the HSTS max-age value, falling back to the recommended default
- * of 1 year (31536000 seconds) when not explicitly configured.
- */
-function getHstsMaxAge(config: BridgeConfig): number {
-  const DEFAULT_HSTS_MAX_AGE = 31_536_000;
-  return config.tls?.hstsMaxAge ?? DEFAULT_HSTS_MAX_AGE;
-}
+import { shouldAddHsts, getHstsMaxAge, buildHstsHeader } from './tls.js';
 
 describe('TLS configuration', () => {
   describe('BridgeConfig TLS interface', () => {
@@ -205,6 +187,43 @@ describe('TLS configuration', () => {
       };
 
       expect(getHstsMaxAge(config)).toBe(31_536_000);
+    });
+  });
+
+  describe('buildHstsHeader', () => {
+    it('should build header with default max-age and includeSubDomains', () => {
+      const config: BridgeConfig = {
+        bind: '127.0.0.1',
+        port: 3000,
+        sessionDurationHours: 24,
+        tls: {
+          enabled: true,
+          certPath: '/etc/ssl/certs/meridian.crt',
+          keyPath: '/etc/ssl/private/meridian.key',
+        },
+      };
+
+      expect(buildHstsHeader(config)).toBe(
+        'max-age=31536000; includeSubDomains',
+      );
+    });
+
+    it('should build header with custom max-age', () => {
+      const config: BridgeConfig = {
+        bind: '127.0.0.1',
+        port: 3000,
+        sessionDurationHours: 24,
+        tls: {
+          enabled: true,
+          certPath: '/etc/ssl/certs/meridian.crt',
+          keyPath: '/etc/ssl/private/meridian.key',
+          hstsMaxAge: 63_072_000,
+        },
+      };
+
+      expect(buildHstsHeader(config)).toBe(
+        'max-age=63072000; includeSubDomains',
+      );
     });
   });
 });
