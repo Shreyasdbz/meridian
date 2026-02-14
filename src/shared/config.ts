@@ -57,6 +57,14 @@ export interface BridgeConfig {
   bind: string;
   port: number;
   sessionDurationHours: number;
+  tls?: {
+    enabled: boolean;
+    certPath: string;
+    keyPath: string;
+    minVersion?: 'TLSv1.2' | 'TLSv1.3';
+    hsts?: boolean;
+    hstsMaxAge?: number;
+  };
 }
 
 export interface SecurityConfig {
