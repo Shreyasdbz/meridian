@@ -431,6 +431,158 @@ describe('validatePlan', () => {
     });
   });
 
+  describe('cycle detection', () => {
+    it('should detect a simple two-step cycle', () => {
+      const plan = createTestPlan({
+        steps: [
+          {
+            id: 'step-a',
+            gear: 'test-gear',
+            action: 'do_thing',
+            parameters: { input: 'a' },
+            riskLevel: 'low',
+            dependsOn: ['step-b'],
+          },
+          {
+            id: 'step-b',
+            gear: 'test-gear',
+            action: 'do_thing',
+            parameters: { input: 'b' },
+            riskLevel: 'low',
+            dependsOn: ['step-a'],
+          },
+        ],
+      });
+
+      const result = validatePlan(plan, defaultRegistry);
+
+      expect(isErr(result)).toBe(true);
+      if (isErr(result)) {
+        expect(getIssueTypes(result.error)).toContain('cycle_detected');
+        const issue = findIssue(result.error, 'cycle_detected');
+        expect(issue.message).toContain('step-a');
+        expect(issue.message).toContain('step-b');
+        expect(issue.details?.cycleStepIds).toEqual(
+          expect.arrayContaining(['step-a', 'step-b']),
+        );
+      }
+    });
+
+    it('should detect a self-referencing step as a cycle', () => {
+      const plan = createTestPlan({
+        steps: [
+          {
+            id: 'step-self',
+            gear: 'test-gear',
+            action: 'do_thing',
+            parameters: { input: 'self' },
+            riskLevel: 'low',
+            dependsOn: ['step-self'],
+          },
+        ],
+      });
+
+      const result = validatePlan(plan, defaultRegistry);
+
+      expect(isErr(result)).toBe(true);
+      if (isErr(result)) {
+        expect(getIssueTypes(result.error)).toContain('cycle_detected');
+      }
+    });
+
+    it('should detect a complex multi-node cycle', () => {
+      const plan = createTestPlan({
+        steps: [
+          {
+            id: 'step-1',
+            gear: 'test-gear',
+            action: 'do_thing',
+            parameters: { input: '1' },
+            riskLevel: 'low',
+          },
+          {
+            id: 'step-2',
+            gear: 'test-gear',
+            action: 'do_thing',
+            parameters: { input: '2' },
+            riskLevel: 'low',
+            dependsOn: ['step-1', 'step-4'], // step-4 creates cycle
+          },
+          {
+            id: 'step-3',
+            gear: 'test-gear',
+            action: 'do_thing',
+            parameters: { input: '3' },
+            riskLevel: 'low',
+            dependsOn: ['step-2'],
+          },
+          {
+            id: 'step-4',
+            gear: 'test-gear',
+            action: 'do_thing',
+            parameters: { input: '4' },
+            riskLevel: 'low',
+            dependsOn: ['step-3'],
+          },
+        ],
+      });
+
+      const result = validatePlan(plan, defaultRegistry);
+
+      expect(isErr(result)).toBe(true);
+      if (isErr(result)) {
+        expect(getIssueTypes(result.error)).toContain('cycle_detected');
+        const issue = findIssue(result.error, 'cycle_detected');
+        // The cycle includes steps 2, 3, and 4
+        const cycleSteps = issue.details?.cycleStepIds as string[];
+        expect(cycleSteps).toEqual(
+          expect.arrayContaining(['step-2', 'step-3', 'step-4']),
+        );
+      }
+    });
+
+    it('should not flag an acyclic diamond dependency as a cycle', () => {
+      const plan = createTestPlan({
+        steps: [
+          {
+            id: 'step-1',
+            gear: 'test-gear',
+            action: 'do_thing',
+            parameters: { input: 'root' },
+            riskLevel: 'low',
+          },
+          {
+            id: 'step-2a',
+            gear: 'test-gear',
+            action: 'do_thing',
+            parameters: { input: 'left' },
+            riskLevel: 'low',
+            dependsOn: ['step-1'],
+          },
+          {
+            id: 'step-2b',
+            gear: 'test-gear',
+            action: 'do_thing',
+            parameters: { input: 'right' },
+            riskLevel: 'low',
+            dependsOn: ['step-1'],
+          },
+          {
+            id: 'step-3',
+            gear: 'test-gear',
+            action: 'do_thing',
+            parameters: { input: 'join' },
+            riskLevel: 'low',
+            dependsOn: ['step-2a', 'step-2b'],
+          },
+        ],
+      });
+
+      const result = validatePlan(plan, defaultRegistry);
+      expect(isOk(result)).toBe(true);
+    });
+  });
+
   describe('edge cases', () => {
     it('should accept a Gear action with an empty parameter schema', () => {
       const manifest = createTestManifest({

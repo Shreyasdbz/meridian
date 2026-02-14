@@ -154,6 +154,19 @@ export type {
   ConsistencyScannerConfig,
 } from './consistency-scanner.js';
 
+// DAG executor (Phase 9.9)
+export { DagExecutor } from './dag-executor.js';
+export type {
+  StepResult,
+  DagExecutionResult,
+  StepExecutor,
+  DagExecutorConfig,
+} from './dag-executor.js';
+
+// Condition evaluator (Phase 9.9)
+export { ConditionEvaluator } from './condition-evaluator.js';
+export type { StepResultRef } from './condition-evaluator.js';
+
 // Memory watchdog (Section 11.4)
 export { MemoryWatchdog } from './memory-watchdog.js';
 export type {

@@ -27,6 +27,7 @@ export type PlanValidationIssueType =
   | 'empty_plan'
   | 'duplicate_step_id'
   | 'invalid_dependency'
+  | 'cycle_detected'
   | 'missing_gear'
   | 'unknown_action'
   | 'invalid_parameters';
@@ -102,7 +103,66 @@ export function validatePlan(
     }
   }
 
-  // 4. Gear existence and action/parameter validation
+  // 4. Structural: detect cycles in dependsOn graph via DFS
+  {
+    const WHITE = 0; // unvisited
+    const GRAY = 1;  // in current DFS path
+    const BLACK = 2; // fully explored
+    const color = new Map<string, number>();
+    for (const step of plan.steps) {
+      color.set(step.id, WHITE);
+    }
+
+    // Build adjacency: step -> steps it depends on (edges point to predecessors)
+    const deps = new Map<string, string[]>();
+    for (const step of plan.steps) {
+      deps.set(step.id, step.dependsOn?.filter((d) => stepIds.has(d)) ?? []);
+    }
+
+    const cycleMembers = new Set<string>();
+
+    function dfs(nodeId: string, path: string[]): boolean {
+      color.set(nodeId, GRAY);
+      path.push(nodeId);
+
+      for (const depId of deps.get(nodeId) ?? []) {
+        const depColor = color.get(depId);
+        if (depColor === GRAY) {
+          // Found a cycle — collect all nodes in the cycle from the path
+          const cycleStart = path.indexOf(depId);
+          for (let i = cycleStart; i < path.length; i++) {
+            cycleMembers.add(path[i]!);
+          }
+          return true;
+        }
+        if (depColor === WHITE) {
+          if (dfs(depId, path)) {
+            return true;
+          }
+        }
+      }
+
+      path.pop();
+      color.set(nodeId, BLACK);
+      return false;
+    }
+
+    for (const step of plan.steps) {
+      if (color.get(step.id) === WHITE) {
+        dfs(step.id, []);
+      }
+    }
+
+    if (cycleMembers.size > 0) {
+      issues.push({
+        type: 'cycle_detected',
+        message: `Dependency cycle detected among steps: ${[...cycleMembers].join(', ')}`,
+        details: { cycleStepIds: [...cycleMembers] },
+      });
+    }
+  }
+
+  // 5. Gear existence and action/parameter validation
   for (const step of plan.steps) {
     const manifest = registry.getManifest(step.gear);
 
