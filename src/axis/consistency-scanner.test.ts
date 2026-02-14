@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-non-null-assertion */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 import { ConsistencyScanner } from './consistency-scanner.js';

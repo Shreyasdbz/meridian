@@ -688,6 +688,7 @@ describe('getNextRun', () => {
       const next = getNextRun(schedule);
       // Should return a date in the future (within the next minute)
       expect(next).toBeDefined();
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
       expect(next!.getTime()).toBeGreaterThan(Date.now());
     });
   });

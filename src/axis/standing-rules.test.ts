@@ -10,6 +10,7 @@ import type { StandingRuleEvaluatorLogger } from './standing-rules.js';
 let idCounter = 0;
 
 vi.mock('@meridian/shared', async (importOriginal) => {
+  // eslint-disable-next-line @typescript-eslint/consistent-type-imports
   const original = await importOriginal<typeof import('@meridian/shared')>();
   return {
     ...original,
@@ -241,95 +242,95 @@ describe('StandingRuleEvaluator', () => {
   // -------------------------------------------------------------------------
 
   describe('suggestRule()', () => {
-    it('should return false when count is below the threshold', async () => {
-      const result = await evaluator.suggestRule('file-manager:read_file');
+    it('should return false when count is below the threshold', () => {
+      const result = evaluator.suggestRule('file-manager:read_file');
 
       expect(result).toBe(false);
     });
 
-    it('should return false for subsequent calls below threshold', async () => {
+    it('should return false for subsequent calls below threshold', () => {
       // Default threshold is 5 (STANDING_RULE_SUGGESTION_COUNT)
       for (let i = 0; i < 4; i++) {
-        const result = await evaluator.suggestRule('file-manager:read_file');
+        const result = evaluator.suggestRule('file-manager:read_file');
         expect(result).toBe(false);
       }
     });
 
-    it('should return true when count reaches the threshold', async () => {
+    it('should return true when count reaches the threshold', () => {
       // Calls 1-4 should return false
       for (let i = 0; i < 4; i++) {
-        await evaluator.suggestRule('file-manager:read_file');
+        evaluator.suggestRule('file-manager:read_file');
       }
 
       // Call 5 should return true (threshold reached)
-      const result = await evaluator.suggestRule('file-manager:read_file');
+      const result = evaluator.suggestRule('file-manager:read_file');
       expect(result).toBe(true);
     });
 
-    it('should reset the counter after reaching the threshold', async () => {
+    it('should reset the counter after reaching the threshold', () => {
       // First batch: reach threshold
       for (let i = 0; i < 5; i++) {
-        await evaluator.suggestRule('file-manager:write_file');
+        evaluator.suggestRule('file-manager:write_file');
       }
 
       // Counter is now reset to 0 -- next call should return false
-      const result = await evaluator.suggestRule('file-manager:write_file');
+      const result = evaluator.suggestRule('file-manager:write_file');
       expect(result).toBe(false);
     });
 
-    it('should track categories independently', async () => {
+    it('should track categories independently', () => {
       // Approve file-manager actions 4 times
       for (let i = 0; i < 4; i++) {
-        await evaluator.suggestRule('file-manager:read_file');
+        evaluator.suggestRule('file-manager:read_file');
       }
 
       // Approve network actions 4 times
       for (let i = 0; i < 4; i++) {
-        await evaluator.suggestRule('network:fetch');
+        evaluator.suggestRule('network:fetch');
       }
 
       // File-manager is at 4, network is at 4 -- neither has reached 5
-      expect(await evaluator.suggestRule('file-manager:delete')).toBe(true); // 5th
-      expect(await evaluator.suggestRule('network:post')).toBe(true); // 5th
+      expect(evaluator.suggestRule('file-manager:delete')).toBe(true); // 5th
+      expect(evaluator.suggestRule('network:post')).toBe(true); // 5th
     });
 
-    it('should use the prefix before the first colon as the category', async () => {
+    it('should use the prefix before the first colon as the category', () => {
       // These should all count toward the 'file-manager' category
-      await evaluator.suggestRule('file-manager:read_file');
-      await evaluator.suggestRule('file-manager:write_file');
-      await evaluator.suggestRule('file-manager:delete');
-      await evaluator.suggestRule('file-manager:list');
+      evaluator.suggestRule('file-manager:read_file');
+      evaluator.suggestRule('file-manager:write_file');
+      evaluator.suggestRule('file-manager:delete');
+      evaluator.suggestRule('file-manager:list');
 
-      const result = await evaluator.suggestRule('file-manager:move');
+      const result = evaluator.suggestRule('file-manager:move');
       expect(result).toBe(true);
     });
 
-    it('should use the entire pattern as category when no colon is present', async () => {
+    it('should use the entire pattern as category when no colon is present', () => {
       for (let i = 0; i < 4; i++) {
-        await evaluator.suggestRule('shell');
+        evaluator.suggestRule('shell');
       }
 
-      const result = await evaluator.suggestRule('shell');
+      const result = evaluator.suggestRule('shell');
       expect(result).toBe(true);
     });
 
-    it('should respect a custom suggestion threshold', async () => {
+    it('should respect a custom suggestion threshold', () => {
       const customEvaluator = new StandingRuleEvaluator({
         db: db as unknown as ConstructorParameters<typeof StandingRuleEvaluator>[0]['db'],
         logger,
         suggestionThreshold: 3,
       });
 
-      await customEvaluator.suggestRule('net:fetch');
-      await customEvaluator.suggestRule('net:post');
+      customEvaluator.suggestRule('net:fetch');
+      customEvaluator.suggestRule('net:post');
 
-      const result = await customEvaluator.suggestRule('net:delete');
+      const result = customEvaluator.suggestRule('net:delete');
       expect(result).toBe(true);
     });
 
-    it('should log when the threshold is reached', async () => {
+    it('should log when the threshold is reached', () => {
       for (let i = 0; i < 5; i++) {
-        await evaluator.suggestRule('file-manager:read');
+        evaluator.suggestRule('file-manager:read');
       }
 
       const logMsg = logger.messages.find(

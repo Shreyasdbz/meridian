@@ -1,4 +1,5 @@
 // @meridian/bridge — TLS configuration and HSTS logic tests (Phase 9.7)
+/* eslint-disable @typescript-eslint/no-non-null-assertion */
 
 import { describe, it, expect } from 'vitest';
 

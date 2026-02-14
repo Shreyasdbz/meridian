@@ -2,7 +2,8 @@ import { describe, it, expect } from 'vitest';
 
 import type { StepCondition } from '@meridian/shared';
 
-import { ConditionEvaluator, StepResultRef } from './condition-evaluator.js';
+import type { StepResultRef } from './condition-evaluator.js';
+import { ConditionEvaluator } from './condition-evaluator.js';
 
 // ---------------------------------------------------------------------------
 // Helpers

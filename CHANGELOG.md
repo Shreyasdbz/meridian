@@ -5,6 +5,73 @@ All notable changes to the Meridian project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-02-13
+
+Safety upgrades, cron scheduling, cost tracking, DAG execution, and additional Gear for v0.2.
+
+### Added
+
+#### Sentinel Upgrades (`src/sentinel/`)
+- LLM-based plan validation using independently configured provider/model (Phase 9.1)
+- Structured evaluation across security, privacy, financial, policy, ethical, and legal categories
+- Confidence-scored verdicts with category-level breakdowns
+- Versioned prompt templates for Sentinel system prompts
+
+#### Ed25519 Message Signing (`src/shared/`, `src/axis/`)
+- Ed25519 keypair generation, signing, and verification for component messages (Phase 9.2)
+- Replaces HMAC-SHA256 for inter-component message integrity
+- Key rotation support with configurable validity periods
+
+#### Additional Built-in Gear (`src/gear/builtin/`)
+- `web-search` Gear: DuckDuckGo HTML search with result parsing (Phase 9.3)
+- `scheduler` Gear: CRUD operations on cron schedules via `executeCommand` (Phase 9.3)
+- `notification` Gear: Send notifications via `executeCommand` (Phase 9.3)
+- `executeCommand` API added to `GearContext` for structured command dispatch
+
+#### Cron Scheduling (`src/axis/`)
+- Custom 5-field cron parser with ranges, lists, steps, and aliases (`@hourly`, `@daily`, etc.) (Phase 9.4)
+- `ScheduleEvaluator` polling for due schedules and creating jobs automatically
+- REST API endpoints for schedule CRUD and toggle
+- Mission Control UI section for managing scheduled jobs
+
+#### Cost Tracking (`src/shared/`, `src/bridge/`)
+- `CostTracker` class recording per-call LLM costs with daily aggregation (Phase 9.5)
+- Built-in pricing data for Claude and GPT model families
+- Alert thresholds at 80% (warning), 95% (critical), and 100% (hard stop)
+- REST API endpoints for daily cost, date range, and per-job cost queries
+
+#### Circuit Breaker, Standing Rules & Consistency (`src/axis/`)
+- In-memory `CircuitBreaker` with closed/open/half_open states and sliding failure window (Phase 9.6)
+- `StandingRuleEvaluator` for pattern-based auto-approval after repeated same-category approvals
+- `ConsistencyScanner` for detecting orphaned cross-database references
+- Batch approval endpoint for jobs
+
+#### TLS, Evaluation & Prompt Versioning (`src/bridge/`, `tests/evaluation/`)
+- TLS configuration support with HSTS headers (Phase 9.7)
+- LLM evaluation framework with graded difficulty and mock/real modes
+- Sentinel prompt versioning with `PromptTemplate` metadata
+- Provider privacy cards showing data retention and training opt-out info
+
+#### Database Encryption & Security Patches (`src/shared/`, `src/bridge/`)
+- Optional SQLCipher integration for encrypted databases (Phase 9.8)
+- Security patch notification endpoint (`GET /api/updates/check`)
+- Sentinel configuration guidance UI for security level recommendations
+
+#### DAG Execution & Conditional Steps (`src/axis/`)
+- `DagExecutor` with topological sort (Kahn's algorithm) for step dependency ordering (Phase 9.9)
+- Parallel layer execution with configurable concurrency (default: 4)
+- `$ref:step:<stepId>` placeholder resolution with dot-path field access
+- `ConditionEvaluator` with 6 operators: eq, neq, gt, lt, contains, exists
+- DFS-based cycle detection in plan pre-validation
+- Failed step propagation: transitive dependents automatically skipped
+
+### Security
+- Ed25519 message signing replaces HMAC-SHA256 for stronger integrity guarantees
+- LLM Sentinel maintains strict information barrier (no user messages, Journal, or Gear catalog)
+- Optional database encryption with SQLCipher and Argon2id key derivation
+- Circuit breaker prevents cascading failures from compromised Gear
+- Standing rules constrained to explicit patterns with expiration
+
 ## [0.1.0] - 2026-02-13
 
 Initial release of Meridian — a self-hosted AI assistant platform with autonomous task execution, dual-LLM safety validation, and sandboxed plugin architecture.
@@ -122,4 +189,5 @@ Initial release of Meridian — a self-hosted AI assistant platform with autonom
 - Credential pattern redaction in all log output
 - Shell Gear disabled by default and exempt from auto-approval
 
+[0.2.0]: https://github.com/meridian-ai/meridian/commits/v0.2.0
 [0.1.0]: https://github.com/meridian-ai/meridian/commits/v0.1.0

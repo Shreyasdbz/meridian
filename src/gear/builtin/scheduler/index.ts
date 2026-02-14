@@ -29,7 +29,7 @@ function requireCommand(context: SchedulerContext): (command: string, params: Re
   if (typeof context.executeCommand !== 'function') {
     throw new Error('executeCommand is not available — scheduler Gear requires command execution support');
   }
-  return context.executeCommand;
+  return context.executeCommand.bind(context);
 }
 
 // ---------------------------------------------------------------------------

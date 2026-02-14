@@ -31,6 +31,7 @@ function resolvePath(obj: unknown, path: string): unknown {
   const parts = path.split('.');
   let current = obj;
   for (const part of parts) {
+    // eslint-disable-next-line eqeqeq -- intentionally check both null and undefined
     if (current == null || typeof current !== 'object') {
       return undefined;
     }

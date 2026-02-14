@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-non-null-assertion, @typescript-eslint/require-await */
 import { describe, it, expect, vi } from 'vitest';
 
 import type { ExecutionStep, StepCondition } from '@meridian/shared';
@@ -25,8 +26,8 @@ function createStep(overrides: Partial<ExecutionStep> & { id: string }): Executi
 }
 
 /** A simple executor that returns `{ ok: true, stepId }`. */
-const successExecutor: StepExecutor = async (step) => {
-  return { ok: true, stepId: step.id };
+const successExecutor: StepExecutor = (step) => {
+  return Promise.resolve({ ok: true, stepId: step.id });
 };
 
 /** An executor that records execution order. */
@@ -116,8 +117,8 @@ describe('DagExecutor', () => {
       const dag = new DagExecutor();
       const steps = [createStep({ id: 'step-a' })];
 
-      const failExecutor: StepExecutor = async () => {
-        throw new Error('step failed');
+      const failExecutor: StepExecutor = () => {
+        return Promise.reject(new Error('step failed'));
       };
 
       const result = await dag.execute(steps, failExecutor);

@@ -1,5 +1,6 @@
 // Meridian — LLM Evaluation Framework tests (Phase 9.7)
 
+/* eslint-disable @typescript-eslint/no-non-null-assertion, @typescript-eslint/require-await */
 import { describe, it, expect } from 'vitest';
 
 import type { EvalCase } from './eval-framework.js';
@@ -130,6 +131,7 @@ describe('EvalRunner', () => {
       const cases: EvalCase[] = [createPassingCase('throw-case')];
 
       const executor = async (_input: Record<string, unknown>) => {
+        // eslint-disable-next-line @typescript-eslint/only-throw-error
         throw 'unexpected string error';
       };
 

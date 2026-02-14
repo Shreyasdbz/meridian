@@ -1,13 +1,13 @@
 // @meridian/shared — Cost tracking (Phase 9.5)
 // Records LLM calls, calculates costs, tracks daily limits and alerts.
 
-import type { DatabaseClient } from './database/index.js';
-import { generateId } from './id.js';
 import {
   COST_ALERT_WARN_PERCENT,
   COST_ALERT_CRITICAL_PERCENT,
   DEFAULT_DAILY_COST_LIMIT_USD,
 } from './constants.js';
+import type { DatabaseClient } from './database/index.js';
+import { generateId } from './id.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -195,7 +195,7 @@ export class CostTracker {
    * Calculate the cost of an LLM call in USD.
    */
   calculateCost(record: LLMCallRecord): number {
-    const pricing = DEFAULT_PRICING[record.model] ?? DEFAULT_PRICING['default']!;
+    const pricing = DEFAULT_PRICING[record.model] ?? DEFAULT_PRICING['default'] ?? { inputPer1M: 3.0, outputPer1M: 15.0 };
 
     const inputCost = (record.inputTokens / 1_000_000) * pricing.inputPer1M;
     const outputCost = (record.outputTokens / 1_000_000) * pricing.outputPer1M;

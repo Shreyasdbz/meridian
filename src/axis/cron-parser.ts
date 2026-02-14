@@ -98,7 +98,10 @@ function parseField(
     if (resolved.includes('/')) {
       // Step: */S or N/S or N-M/S
       const [rangeStr, stepStr] = resolved.split('/');
-      const step = parseInt(stepStr!, 10);
+      if (!stepStr) {
+        throw new Error(`Invalid step expression: ${part}`);
+      }
+      const step = parseInt(stepStr, 10);
       if (isNaN(step) || step <= 0) {
         throw new Error(`Invalid step value: ${stepStr}`);
       }
@@ -107,12 +110,15 @@ function parseField(
       let end = max;
 
       if (rangeStr !== '*') {
-        if (rangeStr!.includes('-')) {
-          const [rStart, rEnd] = rangeStr!.split('-');
-          start = parseInt(rStart!, 10);
-          end = parseInt(rEnd!, 10);
-        } else {
-          start = parseInt(rangeStr!, 10);
+        if (rangeStr && rangeStr.includes('-')) {
+          const [rStart, rEnd] = rangeStr.split('-');
+          if (!rStart || !rEnd) {
+            throw new Error(`Invalid range in step expression: ${part}`);
+          }
+          start = parseInt(rStart, 10);
+          end = parseInt(rEnd, 10);
+        } else if (rangeStr) {
+          start = parseInt(rangeStr, 10);
         }
       }
 
@@ -126,8 +132,11 @@ function parseField(
     } else if (resolved.includes('-')) {
       // Range: N-M
       const [startStr, endStr] = resolved.split('-');
-      const start = parseInt(startStr!, 10);
-      const end = parseInt(endStr!, 10);
+      if (!startStr || !endStr) {
+        throw new Error(`Invalid range expression: ${part}`);
+      }
+      const start = parseInt(startStr, 10);
+      const end = parseInt(endStr, 10);
 
       if (isNaN(start) || isNaN(end)) {
         throw new Error(`Invalid range: ${part}`);
@@ -197,11 +206,26 @@ export function parseCronExpression(expression: string): CronSchedule {
 
   const [minuteStr, hourStr, domStr, monthStr, dowStr] = fields;
 
-  const minutes = parseField(minuteStr!, ...FIELD_RANGES[0]!);
-  const hours = parseField(hourStr!, ...FIELD_RANGES[1]!);
-  const daysOfMonth = parseField(domStr!, ...FIELD_RANGES[2]!);
-  const months = parseField(monthStr!, ...FIELD_RANGES[3]!, MONTH_NAMES);
-  const daysOfWeek = parseField(dowStr!, ...FIELD_RANGES[4]!, DOW_NAMES);
+  // Fields array guaranteed to have 5 elements due to check above
+  if (!minuteStr || !hourStr || !domStr || !monthStr || !dowStr) {
+    throw new Error(`Invalid cron expression: empty field in "${trimmed}"`);
+  }
+
+  const rangeMinute = FIELD_RANGES[0];
+  const rangeHour = FIELD_RANGES[1];
+  const rangeDom = FIELD_RANGES[2];
+  const rangeMonth = FIELD_RANGES[3];
+  const rangeDow = FIELD_RANGES[4];
+
+  if (!rangeMinute || !rangeHour || !rangeDom || !rangeMonth || !rangeDow) {
+    throw new Error('Internal error: FIELD_RANGES not properly initialized');
+  }
+
+  const minutes = parseField(minuteStr, ...rangeMinute);
+  const hours = parseField(hourStr, ...rangeHour);
+  const daysOfMonth = parseField(domStr, ...rangeDom);
+  const months = parseField(monthStr, ...rangeMonth, MONTH_NAMES);
+  const daysOfWeek = parseField(dowStr, ...rangeDow, DOW_NAMES);
 
   return {
     minutes,

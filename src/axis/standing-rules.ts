@@ -175,7 +175,7 @@ export class StandingRuleEvaluator {
    * @param actionPattern - The action pattern that was approved
    * @returns true if the threshold was reached (suggest creating a rule)
    */
-  async suggestRule(actionPattern: string): Promise<boolean> {
+  suggestRule(actionPattern: string): boolean {
     const category = this.extractCategory(actionPattern);
     const current = this.approvalCounts.get(category) ?? 0;
     const next = current + 1;

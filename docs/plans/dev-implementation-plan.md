@@ -2102,15 +2102,17 @@
 
 ---
 
-## Phase 9: v0.2 — Safety, Scheduling & Observability
+## Phase 9: v0.2 — Safety, Scheduling & Observability ✅ COMPLETE
 
 **Goal**: Upgrade Sentinel to full LLM-based validation, add scheduling, signing, cost tracking, and additional Gear.
 
 **Architecture References**: Section 16 Phase 2 (v0.2)
 
+**Status**: All 10 sub-phases implemented (2026-02-13). 2715 tests passing.
+
 ---
 
-### Phase 9.1: Sentinel LLM Validation
+### Phase 9.1: Sentinel LLM Validation ✅
 
 **PR Scope**: Upgrade Sentinel from rule-based to full dual-LLM pipeline.
 
@@ -2140,7 +2142,7 @@
 
 ---
 
-### Phase 9.2: Ed25519 Message Signing
+### Phase 9.2: Ed25519 Message Signing ✅
 
 **PR Scope**: Upgrade from shared HMAC to per-component Ed25519 keypairs.
 
@@ -2167,7 +2169,7 @@
 
 ---
 
-### Phase 9.3: Additional Built-in Gear
+### Phase 9.3: Additional Built-in Gear ✅
 
 **PR Scope**: Add web-search, scheduler, and notification Gear.
 
@@ -2189,7 +2191,7 @@
 
 ---
 
-### Phase 9.4: Cron Scheduling
+### Phase 9.4: Cron Scheduling ✅
 
 **PR Scope**: Time-based recurring job scheduling.
 
@@ -2216,7 +2218,7 @@
 
 ---
 
-### Phase 9.5: Cost Tracking & Token Management
+### Phase 9.5: Cost Tracking & Token Management ✅
 
 **PR Scope**: Per-task cost display, daily limits, cost dashboard.
 
@@ -2242,7 +2244,7 @@
 
 ---
 
-### Phase 9.6: Approval Improvements, Circuit Breaker & Cross-DB Consistency
+### Phase 9.6: Approval Improvements, Circuit Breaker & Cross-DB Consistency ✅
 
 **PR Scope**: Batch approval, standing rules, circuit breaker (deferred from v0.1), cross-database consistency scanner.
 
@@ -2263,7 +2265,7 @@
 
 ---
 
-### Phase 9.7: TLS, Audit Partitioning & LLM Eval Framework
+### Phase 9.7: TLS, Audit Partitioning & LLM Eval Framework ✅
 
 **PR Scope**: TLS configuration, monthly audit partitioning, LLM evaluation framework, prompt versioning.
 
@@ -2291,7 +2293,7 @@
 
 ---
 
-### Phase 9.8: Multi-Provider Support & Database Encryption Option
+### Phase 9.8: Multi-Provider Support & Database Encryption Option ✅
 
 **PR Scope**: Implement the additional LLM providers deferred from Phase 3.2, plus database encryption.
 
@@ -2308,7 +2310,7 @@
 
 ---
 
-### Phase 9.9: DAG Execution, Conditional Steps & Step Output References
+### Phase 9.9: DAG Execution, Conditional Steps & Step Output References ✅
 
 **PR Scope**: Implement DAG-based parallel step execution, conditional execution, and step output references (all v0.2 per architecture Section 5.2.2).
 
@@ -2337,7 +2339,7 @@
 
 ---
 
-### Phase 9.10: v0.2 Release Preparation
+### Phase 9.10: v0.2 Release Preparation ✅
 
 **PR Scope**: Final integration, release checklist, and documentation for v0.2.
 
@@ -2346,13 +2348,13 @@
 - `CHANGELOG.md` for v0.2
 - Run full test suite: unit, integration, security, LLM evaluation
 - Verify all v0.2 features integrated and functional:
-  - [ ] LLM-based Sentinel validation works end-to-end
-  - [ ] Ed25519 signing replaces HMAC for component messages
-  - [ ] Cron scheduling creates and triggers jobs
-  - [ ] Cost tracking displays accurate per-task costs
-  - [ ] Multi-provider support works with all 5 providers
-  - [ ] TLS configuration functional with Let's Encrypt
-  - [ ] Circuit breaker activates after consecutive failures
+  - [x] LLM-based Sentinel validation works end-to-end
+  - [x] Ed25519 signing replaces HMAC for component messages
+  - [x] Cron scheduling creates and triggers jobs
+  - [x] Cost tracking displays accurate per-task costs
+  - [x] Multi-provider support works with all 5 providers
+  - [x] TLS configuration functional with Let's Encrypt
+  - [x] Circuit breaker activates after consecutive failures
 - Verify all module boundaries still enforced (`dependency-cruiser`)
 - Tag and build v0.2.0
 

@@ -131,7 +131,10 @@ export function validatePlan(
           // Found a cycle — collect all nodes in the cycle from the path
           const cycleStart = path.indexOf(depId);
           for (let i = cycleStart; i < path.length; i++) {
-            cycleMembers.add(path[i]!);
+            const stepId = path[i];
+            if (stepId) {
+              cycleMembers.add(stepId);
+            }
           }
           return true;
         }

@@ -193,7 +193,10 @@ export class DagExecutor {
             );
           }
           // depId -> step.id (depId must complete before step.id)
-          adjacency.get(depId)!.push(step.id);
+          const depAdj = adjacency.get(depId);
+          if (depAdj) {
+            depAdj.push(step.id);
+          }
           inDegree.set(step.id, (inDegree.get(step.id) ?? 0) + 1);
         }
       }
@@ -202,14 +205,16 @@ export class DagExecutor {
     // Kahn's algorithm: process layer by layer
     const layers: ExecutionStep[][] = [];
     let queue = steps
-      .filter((s) => (inDegree.get(s.id) ?? 0) === 0)
+      .filter((s) => inDegree.get(s.id) === 0)
       .map((s) => s.id);
 
     let processedCount = 0;
 
     while (queue.length > 0) {
       // Current layer = all zero-degree nodes
-      const layer: ExecutionStep[] = queue.map((id) => stepMap.get(id)!);
+      const layer: ExecutionStep[] = queue
+        .map((id) => stepMap.get(id))
+        .filter((step): step is ExecutionStep => step !== undefined);
       layers.push(layer);
       processedCount += layer.length;
 
@@ -231,7 +236,10 @@ export class DagExecutor {
     // If we didn't process all steps, there's a cycle
     if (processedCount < steps.length) {
       const remaining = steps
-        .filter((s) => (inDegree.get(s.id) ?? 0) > 0)
+        .filter((s) => {
+          const degree = inDegree.get(s.id);
+          return degree !== undefined && degree > 0;
+        })
         .map((s) => s.id);
       throw new Error(
         `Cycle detected in step dependencies: ${remaining.join(', ')}`,
@@ -268,8 +276,11 @@ export class DagExecutor {
 
       // Process results and propagate failures
       for (let j = 0; j < settled.length; j++) {
-        const step = chunk[j]!;
-        const outcome = settled[j]!;
+        const step = chunk[j];
+        const outcome = settled[j];
+        if (!step || !outcome) {
+          continue;
+        }
 
         if (outcome.status === 'rejected') {
           // Executor threw unexpectedly — treat as step failure
@@ -444,7 +455,11 @@ export class DagExecutor {
     }
 
     const [, stepId, dotPath] = match;
-    const stepResult = results.get(stepId!);
+    if (!stepId) {
+      this.logger?.warn(`$ref:step pattern matched but no stepId extracted from: ${value}`);
+      return value;
+    }
+    const stepResult = results.get(stepId);
 
     if (!stepResult || !stepResult.result) {
       this.logger?.warn(
@@ -500,7 +515,10 @@ export class DagExecutor {
           if (!map.has(depId)) {
             map.set(depId, new Set());
           }
-          map.get(depId)!.add(step.id);
+          const depSet = map.get(depId);
+          if (depSet) {
+            depSet.add(step.id);
+          }
         }
       }
     }
@@ -519,7 +537,10 @@ export class DagExecutor {
     const queue = [failedStepId];
 
     while (queue.length > 0) {
-      const current = queue.pop()!;
+      const current = queue.pop();
+      if (!current) {
+        continue;
+      }
       const dependents = dependentsMap.get(current);
       if (!dependents) {
         continue;
@@ -570,7 +591,7 @@ export class DagExecutor {
       return 'failed';
     }
 
-    if (hasCompleted && hasFailure) {
+    if (hasCompleted) {
       return 'partial';
     }
 
