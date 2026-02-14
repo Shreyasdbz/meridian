@@ -62,7 +62,7 @@ RUN mkdir -p /data /workspace && \
 VOLUME ["/data", "/workspace"]
 
 # Expose Bridge port
-EXPOSE 3000
+EXPOSE 3200
 
 # Security: non-root user (runtime hardening via docker-compose.yml:
 # no-new-privileges, read-only root filesystem, tmpfs)

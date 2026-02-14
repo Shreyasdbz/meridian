@@ -111,8 +111,11 @@ const VULNERABILITY_PATTERNS: Array<{
   {
     id: 'VULN_WILDCARD_NETWORK',
     description: 'Gear requests wildcard network access — overly broad permissions',
-    check: (m) =>
-      (m.permissions.network?.domains ?? []).some((d) => d === '*'),
+    check: (m) => {
+      // Builtin Gear may legitimately need wildcard network access (e.g., web-fetch)
+      if (m.origin === 'builtin') return false;
+      return (m.permissions.network?.domains ?? []).some((d) => d === '*');
+    },
   },
   {
     id: 'VULN_EXCESSIVE_SECRETS',

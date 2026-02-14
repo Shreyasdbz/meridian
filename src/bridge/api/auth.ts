@@ -15,6 +15,7 @@ import type {
   LoginResult,
   Session,
 } from '@meridian/shared';
+import { detectDeploymentTier, SecretsVault } from '@meridian/shared';
 import {
   APPROVAL_NONCE_BYTES,
   APPROVAL_NONCE_TTL_HOURS,
@@ -52,17 +53,20 @@ export interface AuthServiceOptions {
   db: DatabaseClient;
   config: BridgeConfig;
   logger: Logger;
+  vault?: SecretsVault;
 }
 
 export class AuthService {
   private readonly db: DatabaseClient;
   private readonly config: BridgeConfig;
   private readonly logger: Logger;
+  private readonly vault?: SecretsVault;
 
   constructor(options: AuthServiceOptions) {
     this.db = options.db;
     this.config = options.config;
     this.logger = options.logger;
+    this.vault = options.vault;
   }
 
   /** Access the database client (used by TOTP integration). */
@@ -102,6 +106,14 @@ export class AuthService {
       'INSERT INTO auth (id, password_hash, created_at, updated_at) VALUES (1, ?, ?, ?)',
       [hash, now, now],
     );
+
+    // Initialize the secrets vault with the same password
+    if (this.vault && !this.vault.isUnlocked) {
+      const tier = detectDeploymentTier();
+      const vaultTier = tier === 'pi' ? 'low-power' : 'standard';
+      await this.vault.initialize(password, vaultTier);
+      this.logger.info('Secrets vault initialized');
+    }
 
     this.logger.info('Initial password configured');
   }
@@ -154,6 +166,27 @@ export class AuthService {
         error: 'Invalid password',
         retryAfterMs: updatedStatus.retryAfterMs,
       };
+    }
+
+    // Ensure the secrets vault is unlocked (or initialize if it doesn't exist yet)
+    if (this.vault && !this.vault.isUnlocked) {
+      try {
+        await this.vault.unlock(password);
+        this.logger.info('Secrets vault unlocked');
+      } catch {
+        // Vault file doesn't exist — initialize it with the login password.
+        // This handles upgrades where the password was set before vault support.
+        try {
+          const tier = detectDeploymentTier();
+          const vaultTier = tier === 'pi' ? 'low-power' : 'standard';
+          await this.vault.initialize(password, vaultTier);
+          this.logger.info('Secrets vault initialized on first login');
+        } catch (initErr: unknown) {
+          this.logger.warn('Failed to initialize secrets vault', {
+            error: initErr instanceof Error ? initErr.message : String(initErr),
+          });
+        }
+      }
     }
 
     // Create session

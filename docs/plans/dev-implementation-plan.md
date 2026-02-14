@@ -337,11 +337,11 @@
     - `[scout.models]`: `primary` (model ID string), `secondary` (model ID string, used from v0.4)
     - `[sentinel]`: `provider`, `model`, `max_context_tokens` (32000) — unused in v0.1 (rule-based)
     - `[journal]`: `embedding_provider` ("local"), `embedding_model` ("nomic-embed-text"), `episode_retention_days` (90), `reflection_enabled` (true) — unused in v0.1
-    - `[bridge]`: `bind` ("127.0.0.1"), `port` (3000), `session_duration_hours` (168)
+    - `[bridge]`: `bind` ("127.0.0.1"), `port` (3200), `session_duration_hours` (168)
     - `[security]`: `daily_cost_limit_usd` (5.00), `require_approval_for` (list of action types requiring approval)
   - Precedence hierarchy: defaults → config file → environment variables → database config table
   - TOML parsing for `data/config.toml`
-  - Environment variable mapping: `MERIDIAN_*` prefix (e.g., `MERIDIAN_BRIDGE_PORT=3000`)
+  - Environment variable mapping: `MERIDIAN_*` prefix (e.g., `MERIDIAN_BRIDGE_PORT=3200`)
   - Deployment tier detection (Raspberry Pi vs Desktop vs VPS) for resource tuning
   - Validation of configuration values at load time
 - `src/shared/logger.ts`:
@@ -1401,7 +1401,7 @@
 - `server.ts`:
   - Fastify server creation
   - Bind to `127.0.0.1` by default (Section 6.5)
-  - Configurable port (default: 3000)
+  - Configurable port (default: 3200)
   - Security headers on all responses (Section 6.5.1):
     - `Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' ws://localhost:* wss://localhost:*; frame-ancestors 'none'`
     - `X-Content-Type-Options: nosniff`

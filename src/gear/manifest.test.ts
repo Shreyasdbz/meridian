@@ -606,8 +606,9 @@ describe('validateManifest', () => {
       expect(result.ok).toBe(true);
     });
 
-    it('should flag wildcard network access', () => {
+    it('should flag wildcard network access for non-builtin Gear', () => {
       const manifest = createValidManifest({
+        origin: 'user',
         permissions: {
           network: {
             domains: ['*'],
@@ -622,6 +623,20 @@ describe('validateManifest', () => {
           result.error.some((i) => i.field === 'VULN_WILDCARD_NETWORK'),
         ).toBe(true);
       }
+    });
+
+    it('should allow wildcard network access for builtin Gear', () => {
+      const manifest = createValidManifest({
+        origin: 'builtin',
+        permissions: {
+          network: {
+            domains: ['*'],
+          },
+        },
+      });
+
+      const result = validateManifest(manifest);
+      expect(result.ok).toBe(true);
     });
 
     it('should flag excessive secrets', () => {

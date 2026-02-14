@@ -486,7 +486,7 @@ Bridge serves the following security headers on all responses:
 | `Permissions-Policy` | `camera=(), microphone=(), geolocation=()` | Restricts browser API access |
 
 **CORS policy:** Bridge's API responds to cross-origin requests only from the exact origin
-serving the Bridge UI (default: `http://127.0.0.1:3000`). All other origins are rejected. If
+serving the Bridge UI (default: `http://127.0.0.1:3200`). All other origins are rejected. If
 remote access is configured with a custom domain, that domain is added to the CORS allowlist.
 The CORS configuration does not use wildcards.
 
@@ -516,7 +516,7 @@ The document does not describe how WebSocket connections are authenticated. WebS
 **WebSocket authentication:**
 
 - **Origin validation**: On WebSocket upgrade, Bridge validates the `Origin` header against
-  the configured allowed origins (default: `http://127.0.0.1:3000`). Upgrade requests from
+  the configured allowed origins (default: `http://127.0.0.1:3200`). Upgrade requests from
   unrecognized origins are rejected.
 - **Session validation at upgrade**: The session cookie is validated during the HTTP upgrade
   handshake. Connections without a valid session are rejected with 401.

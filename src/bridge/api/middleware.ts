@@ -35,6 +35,12 @@ const PUBLIC_PATHS = new Set([
 
 /** Check if a path should skip authentication. */
 function isPublicPath(path: string): boolean {
+  // Only enforce auth on API routes — static files and SPA routes
+  // are served without auth; the SPA handles auth state client-side
+  // by checking /api/auth/status and redirecting to the login page.
+  if (!path.startsWith('/api/')) {
+    return true;
+  }
   return PUBLIC_PATHS.has(path);
 }
 

@@ -135,10 +135,10 @@ decision, and every failure mode is specified here.
 After `docker compose up` or `npm start`, Meridian prints a single line to the terminal:
 
 ```
-Meridian is running at http://localhost:3000
+Meridian is running at http://localhost:3200
 ```
 
-If port 3000 is in use, Meridian automatically selects the next available port and prints the
+If port 3200 is in use, Meridian automatically selects the next available port and prints the
 actual URL. No other terminal output is shown unless there is an error.
 
 **Setup Wizard (Target: <90 seconds, 3 steps)**
@@ -451,7 +451,7 @@ reflection_enabled = false           # Enable after v0.3 when reflection pipelin
 
 [bridge]
 bind = "127.0.0.1"
-port = 3000
+port = 3200
 session_duration_hours = 168         # 7 days
 show_cost_per_task = true            # Display token usage and estimated cost in the UI
 

@@ -115,7 +115,7 @@ bind = "127.0.0.1"
 
 # Port for the Bridge HTTP/WebSocket server.
 # Env: MERIDIAN_BRIDGE_PORT
-port = 3000
+port = 3200
 
 # Session duration in hours before requiring re-authentication.
 # Default: 168 (7 days).

@@ -294,7 +294,7 @@ export async function createServer(options: CreateServerOptions): Promise<{
   );
 
   // ----- Auth service & middleware -----
-  const authService = new AuthService({ db, config, logger });
+  const authService = new AuthService({ db, config, logger, vault });
 
   await server.register(authMiddleware, { authService });
   await server.register(csrfMiddleware, { authService });
@@ -526,13 +526,12 @@ export async function createBridgeServer(
   });
 
   // 3. Static file serving for production SPA (conditional)
-  const distDir = join(process.cwd(), 'src', 'bridge', 'ui', 'dist');
+  const distDir = join(process.cwd(), 'dist', 'ui');
   if (existsSync(distDir)) {
     await server.register(fastifyStatic, {
       root: distDir,
       prefix: '/',
       wildcard: false,
-      decorateReply: false,
     });
 
     // SPA fallback: serve index.html for non-API routes
@@ -655,7 +654,7 @@ async function createServerWithAxis(options: CreateServerOptions & { axis: AxisA
   );
 
   // ----- Auth -----
-  const authService = new AuthService({ db, config, logger });
+  const authService = new AuthService({ db, config, logger, vault });
   await server.register(authMiddleware, { authService });
   await server.register(csrfMiddleware, { authService });
   authRoutes(server, authService);

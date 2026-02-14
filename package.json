@@ -12,7 +12,8 @@
   },
   "main": "./dist/main.js",
   "scripts": {
-    "build": "tsup",
+    "build": "tsup && vite build",
+    "build:server": "tsup",
     "build:ui": "vite build",
     "dev": "tsx watch src/main.ts",
     "dev:ui": "vite",

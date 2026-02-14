@@ -12,7 +12,7 @@ describe('TLS configuration', () => {
     it('should accept a config without TLS (TLS is optional)', () => {
       const config: BridgeConfig = {
         bind: '127.0.0.1',
-        port: 3000,
+        port: 3200,
         sessionDurationHours: 24,
       };
 
@@ -22,7 +22,7 @@ describe('TLS configuration', () => {
     it('should accept a config with TLS enabled', () => {
       const config: BridgeConfig = {
         bind: '127.0.0.1',
-        port: 3000,
+        port: 3200,
         sessionDurationHours: 24,
         tls: {
           enabled: true,
@@ -40,7 +40,7 @@ describe('TLS configuration', () => {
     it('should accept TLS config with optional minVersion field', () => {
       const config: BridgeConfig = {
         bind: '127.0.0.1',
-        port: 3000,
+        port: 3200,
         sessionDurationHours: 24,
         tls: {
           enabled: true,
@@ -76,7 +76,7 @@ describe('TLS configuration', () => {
     it('should return true when TLS is enabled and HSTS is not explicitly set', () => {
       const config: BridgeConfig = {
         bind: '127.0.0.1',
-        port: 3000,
+        port: 3200,
         sessionDurationHours: 24,
         tls: {
           enabled: true,
@@ -91,7 +91,7 @@ describe('TLS configuration', () => {
     it('should return true when TLS is enabled and HSTS is explicitly true', () => {
       const config: BridgeConfig = {
         bind: '127.0.0.1',
-        port: 3000,
+        port: 3200,
         sessionDurationHours: 24,
         tls: {
           enabled: true,
@@ -107,7 +107,7 @@ describe('TLS configuration', () => {
     it('should return false when TLS is enabled but HSTS is explicitly false', () => {
       const config: BridgeConfig = {
         bind: '127.0.0.1',
-        port: 3000,
+        port: 3200,
         sessionDurationHours: 24,
         tls: {
           enabled: true,
@@ -123,7 +123,7 @@ describe('TLS configuration', () => {
     it('should return false when TLS is disabled', () => {
       const config: BridgeConfig = {
         bind: '127.0.0.1',
-        port: 3000,
+        port: 3200,
         sessionDurationHours: 24,
         tls: {
           enabled: false,
@@ -139,7 +139,7 @@ describe('TLS configuration', () => {
     it('should return false when TLS config is absent', () => {
       const config: BridgeConfig = {
         bind: '127.0.0.1',
-        port: 3000,
+        port: 3200,
         sessionDurationHours: 24,
       };
 
@@ -151,7 +151,7 @@ describe('TLS configuration', () => {
     it('should return the configured max-age when set', () => {
       const config: BridgeConfig = {
         bind: '127.0.0.1',
-        port: 3000,
+        port: 3200,
         sessionDurationHours: 24,
         tls: {
           enabled: true,
@@ -167,7 +167,7 @@ describe('TLS configuration', () => {
     it('should return the default of 1 year when max-age is not configured', () => {
       const config: BridgeConfig = {
         bind: '127.0.0.1',
-        port: 3000,
+        port: 3200,
         sessionDurationHours: 24,
         tls: {
           enabled: true,
@@ -182,7 +182,7 @@ describe('TLS configuration', () => {
     it('should return the default when TLS config is absent', () => {
       const config: BridgeConfig = {
         bind: '127.0.0.1',
-        port: 3000,
+        port: 3200,
         sessionDurationHours: 24,
       };
 
@@ -194,7 +194,7 @@ describe('TLS configuration', () => {
     it('should build header with default max-age and includeSubDomains', () => {
       const config: BridgeConfig = {
         bind: '127.0.0.1',
-        port: 3000,
+        port: 3200,
         sessionDurationHours: 24,
         tls: {
           enabled: true,
@@ -211,7 +211,7 @@ describe('TLS configuration', () => {
     it('should build header with custom max-age', () => {
       const config: BridgeConfig = {
         bind: '127.0.0.1',
-        port: 3000,
+        port: 3200,
         sessionDurationHours: 24,
         tls: {
           enabled: true,

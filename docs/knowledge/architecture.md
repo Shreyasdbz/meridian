@@ -2543,7 +2543,7 @@ services:
   meridian:
     image: meridian/meridian:latest
     ports:
-      - "127.0.0.1:3000:3000"      # Bridge UI — localhost only by default
+      - "127.0.0.1:3200:3200"      # Bridge UI — localhost only by default
     volumes:
       - meridian-data:/data          # Persistent data
       - meridian-workspace:/workspace # File workspace
@@ -2613,7 +2613,7 @@ reflection_enabled = true
 
 [bridge]
 bind = "127.0.0.1"
-port = 3000
+port = 3200
 session_duration_hours = 168         # 7 days
 
 [security]

@@ -54,7 +54,7 @@ describe('getDefaultConfig', () => {
     expect(config.axis.workers).toBe(DEFAULT_WORKERS_PI);
     expect(config.axis.jobTimeoutMs).toBe(DEFAULT_JOB_TIMEOUT_MS);
     expect(config.bridge.bind).toBe('127.0.0.1');
-    expect(config.bridge.port).toBe(3000);
+    expect(config.bridge.port).toBe(3200);
   });
 
   it('should return desktop-tier defaults', () => {
@@ -136,7 +136,7 @@ describe('loadConfig', () => {
       expect(result.ok).toBe(true);
       if (result.ok) {
         expect(result.value.axis.workers).toBe(DEFAULT_WORKERS_DESKTOP);
-        expect(result.value.bridge.port).toBe(3000);
+        expect(result.value.bridge.port).toBe(3200);
         expect(result.value.bridge.bind).toBe('127.0.0.1');
         expect(result.value.scout.provider).toBe('anthropic');
       }
@@ -336,7 +336,7 @@ port = 4000
       expect(result.ok).toBe(true);
       if (result.ok) {
         // Should keep default since env var was invalid
-        expect(result.value.bridge.port).toBe(3000);
+        expect(result.value.bridge.port).toBe(3200);
       }
     });
   });

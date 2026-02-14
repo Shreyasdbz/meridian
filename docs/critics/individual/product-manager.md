@@ -64,7 +64,7 @@ The architecture document describes the system exhaustively but never describes 
 ### What Is Missing
 
 **Minute 0-1: Installation**
-The doc shows four installation methods (curl, npm, Docker, Docker Compose) but does not describe what happens after. Does the user see a terminal prompt? Does a browser open automatically? What if port 3000 is in use?
+The doc shows four installation methods (curl, npm, Docker, Docker Compose) but does not describe what happens after. Does the user see a terminal prompt? Does a browser open automatically? What if port 3200 is in use?
 
 **Minute 1-2: Setup Wizard**
 Section 5.5.6 mentions a "setup wizard" in a single bullet point — "On first run, the user creates an account with a strong password" — alongside notes on session management, TOTP support, and single-user mode. But this is the most critical UX moment in the entire product and it gets a single sentence. What does the wizard ask? How many steps? Does the user need to paste an API key immediately, or can they explore first? What if they do not have an API key yet?

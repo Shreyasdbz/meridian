@@ -44,6 +44,7 @@ import {
   getDefaultConfig,
   loadConfig,
   migrate,
+  SecretsVault,
 } from '@meridian/shared';
 import type {
   AxisMessage,
@@ -738,6 +739,11 @@ export async function startMeridian(options?: {
   await db.open('journal');
   await migrate(db, 'journal', projectRoot);
 
+  // Invalidate stale sessions on startup — forces re-login, which unlocks the
+  // secrets vault (the vault key is derived from the user's password and can
+  // only be obtained during login).
+  await db.run('meridian', 'DELETE FROM sessions', []);
+
   logger.info('Database initialized');
 
   // -------------------------------------------------------------------------
@@ -859,10 +865,16 @@ export async function startMeridian(options?: {
   // -------------------------------------------------------------------------
   // Step 6: Bridge startup → readiness probe
   // -------------------------------------------------------------------------
+
+  // Create secrets vault (initialized/unlocked via auth setup/login)
+  const vaultPath = resolve(dataDir, 'secrets.vault');
+  const vault = new SecretsVault(vaultPath);
+
   const bridge = await createBridgeServer(config.bridge, axis, {
     db,
     logger,
     auditLog: axis.internals.auditLog,
+    vault,
     workspacePath,
     isReady: () => axis.isReady(),
   });

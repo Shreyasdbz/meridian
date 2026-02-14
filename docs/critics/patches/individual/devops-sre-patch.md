@@ -313,7 +313,7 @@ services:
   meridian:
     image: meridian/meridian:latest
     ports:
-      - "127.0.0.1:3000:3000"
+      - "127.0.0.1:3200:3200"
     volumes:
       - meridian-data:/data
       - meridian-workspace:/workspace
@@ -1046,7 +1046,7 @@ to be running. It checks:
 | Database schema versions | Match expected versions for this binary |
 | Disk space | Available space on the data directory |
 | Memory | Available system RAM |
-| Port availability | Default port (3000) is not in use |
+| Port availability | Default port (3200) is not in use |
 | Config validity | Configuration file parses correctly, required fields present |
 | Secret vault | Vault file is readable and decryptable |
 | LLM API connectivity | Can reach configured providers (optional, `--check-apis`) |
@@ -1300,7 +1300,7 @@ Current:
 ```toml
 [bridge]
 bind = "127.0.0.1"
-port = 3000
+port = 3200
 ```
 
 Proposed:
@@ -1309,7 +1309,7 @@ Proposed:
 bind = "127.0.0.1"           # Default: IPv4 loopback only
 # bind = "::1"               # IPv6 loopback only
 # bind = "localhost"          # Dual-stack (both IPv4 and IPv6 loopback, OS-dependent)
-port = 3000
+port = 3200
 ```
 
 Add a note:

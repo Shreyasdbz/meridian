@@ -517,7 +517,7 @@ Without a strict CSP (`default-src 'self'`, `script-src 'self'`, no `unsafe-inli
 
 ### 12.2 CORS Policy
 
-The document does not specify a CORS policy. Since Bridge binds to `127.0.0.1:3000`, a malicious web page running on `localhost:8080` (or any other port) could make cross-origin requests to Bridge's API unless CORS is explicitly restricted.
+The document does not specify a CORS policy. Since Bridge binds to `127.0.0.1:3200`, a malicious web page running on `localhost:8080` (or any other port) could make cross-origin requests to Bridge's API unless CORS is explicitly restricted.
 
 ### 12.3 Missing: Subresource Integrity (SRI)
 

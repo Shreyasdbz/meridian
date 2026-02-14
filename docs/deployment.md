@@ -30,7 +30,7 @@ npm run build:ui
 npm run dev
 ```
 
-Open http://127.0.0.1:3000 to access the Bridge UI.
+Open http://127.0.0.1:3200 to access the Bridge UI.
 
 ### 2. Mac Mini / Home Server
 
@@ -130,7 +130,7 @@ All configuration options can be overridden via environment variables with the `
 | `MERIDIAN_JOURNAL_EPISODE_RETENTION_DAYS` | number | 90 | Episode retention in days |
 | `MERIDIAN_JOURNAL_REFLECTION_ENABLED` | boolean | `true` | Enable reflection pipeline |
 | `MERIDIAN_BRIDGE_BIND` | string | `127.0.0.1` | Bridge bind address |
-| `MERIDIAN_BRIDGE_PORT` | number | 3000 | Bridge port |
+| `MERIDIAN_BRIDGE_PORT` | number | 3200 | Bridge port |
 | `MERIDIAN_BRIDGE_SESSION_DURATION_HOURS` | number | 168 | Session duration in hours |
 | `MERIDIAN_SECURITY_DAILY_COST_LIMIT_USD` | number | 5.00 | Daily LLM cost limit |
 | `MERIDIAN_SECURITY_REQUIRE_APPROVAL_FOR` | string[] | `file.delete,...` | Actions requiring approval (comma-separated) |
@@ -153,7 +153,7 @@ The Docker setup includes these security hardening measures:
 - **`read_only: true`**: Root filesystem is read-only; writes only to mounted volumes and tmpfs
 - **`tmpfs: /tmp`**: Temporary files go to a memory-backed filesystem (256 MB limit)
 - **Non-root user**: Meridian runs as UID 1001 inside the container
-- **Localhost port binding**: `127.0.0.1:3000:3000` — not exposed to the network by default
+- **Localhost port binding**: `127.0.0.1:3200:3200` — not exposed to the network by default
 - **Docker secrets**: Master key is mounted via Docker secrets, not environment variables
 
 ### Volumes
@@ -187,7 +187,7 @@ services:
 By default, Meridian only binds to `127.0.0.1`. For remote access:
 
 1. **Reverse proxy with TLS** (recommended): Use nginx, Caddy, or similar with HTTPS termination
-2. **SSH tunnel**: `ssh -L 3000:127.0.0.1:3000 user@server`
+2. **SSH tunnel**: `ssh -L 3200:127.0.0.1:3200 user@server`
 
 **Never expose Meridian directly to the internet without TLS.** Authentication is mandatory on all deployments, but TLS is required to protect credentials in transit.
 
@@ -238,7 +238,7 @@ docker compose logs meridian
 
 Common causes:
 - Missing `master_key.txt` — generate with `openssl rand -hex 32 > master_key.txt`
-- Port 3000 already in use — change with `MERIDIAN_BRIDGE_PORT=3001`
+- Port 3200 already in use — change with `MERIDIAN_BRIDGE_PORT=3201`
 
 ### Raspberry Pi: Out of Memory
 

@@ -140,7 +140,7 @@ export function getDefaultConfig(tier: DeploymentTier): MeridianConfig {
     },
     bridge: {
       bind: '127.0.0.1',
-      port: 3000,
+      port: 3200,
       sessionDurationHours: DEFAULT_SESSION_DURATION_HOURS,
     },
     security: {
