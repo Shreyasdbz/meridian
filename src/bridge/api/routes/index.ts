@@ -29,3 +29,6 @@ export type { SecretRouteOptions } from './secrets.js';
 
 export { metricsRoutes } from './metrics.js';
 export type { MetricsRouteOptions, MetricsProvider } from './metrics.js';
+
+export { scheduleRoutes } from './schedules.js';
+export type { ScheduleRouteOptions } from './schedules.js';

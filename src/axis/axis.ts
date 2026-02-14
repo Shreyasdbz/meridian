@@ -23,6 +23,7 @@ import type { LifecycleLogger, StartupPhase } from './lifecycle.js';
 import { BasicMaintenance } from './maintenance-basic.js';
 import type { GearLookup } from './plan-validator.js';
 import { validatePlan } from './plan-validator.js';
+import { ScheduleEvaluator } from './schedule-evaluator.js';
 import { recoverJobs } from './recovery.js';
 import type { RecoveryResult } from './recovery.js';
 import { ComponentRegistryImpl } from './registry.js';
@@ -80,6 +81,7 @@ export interface AxisInternals {
   readonly auditLog: AuditLog;
   readonly lifecycle: LifecycleManager;
   readonly maintenance: BasicMaintenance;
+  readonly scheduleEvaluator: ScheduleEvaluator;
 }
 
 // ---------------------------------------------------------------------------
@@ -132,6 +134,7 @@ export class Axis {
   private readonly _auditLog: AuditLog;
   private readonly _lifecycle: LifecycleManager;
   private readonly _maintenance: BasicMaintenance;
+  private readonly _scheduleEvaluator: ScheduleEvaluator;
 
   private started = false;
   private lastRecoveryResult: RecoveryResult | undefined;
@@ -211,6 +214,19 @@ export class Axis {
     // 8. Basic maintenance
     this._maintenance = new BasicMaintenance({
       db: this.db,
+      logger: this.logger,
+    });
+
+    // 9. Schedule evaluator (Phase 9.4)
+    this._scheduleEvaluator = new ScheduleEvaluator({
+      db: this.db,
+      createJob: async (opts) => {
+        const job = await this._jobQueue.createJob({
+          source: opts.source,
+          metadata: opts.metadata,
+        });
+        return { id: job.id };
+      },
       logger: this.logger,
     });
 
@@ -333,6 +349,7 @@ export class Axis {
       auditLog: this._auditLog,
       lifecycle: this._lifecycle,
       maintenance: this._maintenance,
+      scheduleEvaluator: this._scheduleEvaluator,
     };
   }
 
@@ -407,15 +424,23 @@ export class Axis {
       // Start maintenance scheduler
       await this._maintenance.start();
 
+      // Start schedule evaluator (Phase 9.4)
+      this._scheduleEvaluator.start();
+
       // Start worker pool
       this._workerPool.start();
 
-      this.logger.info('Worker pool and maintenance started');
+      this.logger.info('Worker pool, maintenance, and schedule evaluator started');
     });
 
     // --- Shutdown handlers (reverse order) ---
     this._lifecycle.registerShutdownHandler('Stop worker pool', async () => {
       await this._workerPool.stop();
+    });
+
+    this._lifecycle.registerShutdownHandler('Stop schedule evaluator', () => {
+      this._scheduleEvaluator.stop();
+      return Promise.resolve();
     });
 
     this._lifecycle.registerShutdownHandler('Stop maintenance', () => {

@@ -477,12 +477,12 @@ describe('RecentCompletionsSection', () => {
 // ===========================================================================
 
 describe('ScheduledJobsSection', () => {
-  it('should render v0.2 placeholder', () => {
+  it('should render empty state when no schedules exist', () => {
     render(<ScheduledJobsSection />);
 
     expect(screen.getByText('Scheduled Jobs')).toBeInTheDocument();
     expect(
-      screen.getByText('Scheduled tasks will be available in a future update'),
+      screen.getByText('No scheduled jobs configured'),
     ).toBeInTheDocument();
   });
 });

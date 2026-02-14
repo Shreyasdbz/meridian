@@ -41,6 +41,7 @@ import {
   auditRoutes,
   secretRoutes,
   metricsRoutes,
+  scheduleRoutes,
 } from './routes/index.js';
 import { type WebSocketManager, websocketRoutes } from './websocket.js';
 
@@ -274,6 +275,7 @@ export async function createServer(options: CreateServerOptions): Promise<{
   gearRoutes(server, { db, logger });
   configRoutes(server, { db, logger });
   memoryRoutes(server, { db, logger });
+  scheduleRoutes(server, { db, logger });
 
   if (auditLog) {
     auditRoutes(server, { auditLog, logger });
@@ -593,6 +595,7 @@ async function createServerWithAxis(options: CreateServerOptions & { axis: AxisA
   gearRoutes(server, { db, logger });
   configRoutes(server, { db, logger });
   memoryRoutes(server, { db, logger });
+  scheduleRoutes(server, { db, logger });
 
   if (auditLog) {
     auditRoutes(server, { auditLog, logger });

@@ -123,6 +123,21 @@ export type {
 export { MetricsCollector } from './metrics.js';
 export type { MetricsCollectorOptions } from './metrics.js';
 
+// Cron scheduling (Phase 9.4)
+export {
+  parseCronExpression,
+  isValidCronExpression,
+  getNextRun,
+} from './cron-parser.js';
+export type { CronSchedule } from './cron-parser.js';
+
+export { ScheduleEvaluator } from './schedule-evaluator.js';
+export type {
+  ScheduleEvaluatorConfig,
+  ScheduleEvaluatorLogger,
+  ScheduleJobCreator,
+} from './schedule-evaluator.js';
+
 // Memory watchdog (Section 11.4)
 export { MemoryWatchdog } from './memory-watchdog.js';
 export type {
