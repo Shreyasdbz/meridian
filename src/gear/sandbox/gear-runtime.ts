@@ -56,6 +56,20 @@ interface SubJobRequest {
   requestId: string;
 }
 
+interface CommandRequest {
+  type: 'command';
+  command: string;
+  params: Record<string, unknown>;
+  requestId: string;
+}
+
+interface CommandResponse {
+  type: 'command_response';
+  requestId: string;
+  result?: Record<string, unknown>;
+  error?: string;
+}
+
 /**
  * Manifest permissions structure (matches GearPermissions in shared/types.ts).
  * Duplicated here since the runtime cannot import from @meridian/shared.
@@ -89,6 +103,7 @@ interface GearContextProxy {
   log(message: string): void;
   progress(percent: number, message?: string): void;
   createSubJob(description: string): Promise<JobResult>;
+  executeCommand?(command: string, params: Record<string, unknown>): Promise<Record<string, unknown>>;
 }
 
 interface FetchOptions {
@@ -147,6 +162,34 @@ function sendLog(gearId: string, message: string): void {
 function sendSubJobRequest(description: string, requestId: string): void {
   const msg: SubJobRequest = { type: 'subjob', description, requestId };
   process.stdout.write(JSON.stringify(msg) + '\n');
+}
+
+function sendCommandRequest(command: string, params: Record<string, unknown>, requestId: string): void {
+  const msg: CommandRequest = { type: 'command', command, params, requestId };
+  process.stdout.write(JSON.stringify(msg) + '\n');
+}
+
+/**
+ * Pending command response resolvers — used to bridge async command execution
+ * between the Gear code and the host process via stdin/stdout IPC.
+ */
+const pendingCommandResolvers = new Map<string, {
+  resolve: (result: Record<string, unknown>) => void;
+  reject: (error: Error) => void;
+}>();
+
+/**
+ * Handle a command response from the host process.
+ */
+function handleCommandResponse(response: CommandResponse): void {
+  const pending = pendingCommandResolvers.get(response.requestId);
+  if (!pending) return;
+  pendingCommandResolvers.delete(response.requestId);
+  if (response.error) {
+    pending.reject(new Error(response.error));
+  } else {
+    pending.resolve(response.result ?? {});
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -488,6 +531,14 @@ function createContextProxy(
         status: 'pending',
       });
     },
+
+    executeCommand(command: string, cmdParams: Record<string, unknown>): Promise<Record<string, unknown>> {
+      const requestId = `cmd-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+      return new Promise<Record<string, unknown>>((resolve, reject) => {
+        pendingCommandResolvers.set(requestId, { resolve, reject });
+        sendCommandRequest(command, cmdParams, requestId);
+      });
+    },
   };
 }
 
@@ -542,6 +593,17 @@ export function startRuntime(): void {
       inputBuffer = inputBuffer.slice(newlineIdx + 1);
 
       if (!line) continue;
+
+      // Check if this is a command_response from the host
+      try {
+        const parsed = JSON.parse(line) as Record<string, unknown>;
+        if (parsed['type'] === 'command_response') {
+          handleCommandResponse(parsed as unknown as CommandResponse);
+          continue;
+        }
+      } catch {
+        // Not JSON or not a command response — treat as a request
+      }
 
       void processRequest(line, gearId, workspacePath, secretsDir, permissions);
     }

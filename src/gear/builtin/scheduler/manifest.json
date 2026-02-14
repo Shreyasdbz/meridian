@@ -1,0 +1,107 @@
+{
+  "id": "scheduler",
+  "name": "Scheduler",
+  "version": "1.0.0",
+  "description": "Built-in Gear for managing scheduled jobs. Provides CRUD operations on cron schedules.",
+  "author": "Meridian",
+  "license": "Apache-2.0",
+  "origin": "builtin",
+  "checksum": "builtin",
+  "actions": [
+    {
+      "name": "create_schedule",
+      "description": "Create a new cron schedule",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string", "description": "Human-readable schedule name" },
+          "cronExpression": { "type": "string", "description": "5-field cron expression" },
+          "jobTemplate": { "type": "object", "description": "Job template with description and metadata" }
+        },
+        "required": ["name", "cronExpression", "jobTemplate"],
+        "additionalProperties": false
+      },
+      "returns": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "cronExpression": { "type": "string" },
+          "enabled": { "type": "boolean" },
+          "createdAt": { "type": "string" }
+        }
+      },
+      "riskLevel": "medium"
+    },
+    {
+      "name": "update_schedule",
+      "description": "Update an existing schedule",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "description": "Schedule ID" },
+          "name": { "type": "string" },
+          "cronExpression": { "type": "string" },
+          "enabled": { "type": "boolean" }
+        },
+        "required": ["id"],
+        "additionalProperties": false
+      },
+      "returns": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "updated": { "type": "boolean" }
+        }
+      },
+      "riskLevel": "medium"
+    },
+    {
+      "name": "delete_schedule",
+      "description": "Delete a schedule",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "description": "Schedule ID to delete" }
+        },
+        "required": ["id"],
+        "additionalProperties": false
+      },
+      "returns": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "deleted": { "type": "boolean" }
+        }
+      },
+      "riskLevel": "medium"
+    },
+    {
+      "name": "list_schedules",
+      "description": "List all schedules",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "enabledOnly": { "type": "boolean", "description": "If true, only return enabled schedules" }
+        },
+        "additionalProperties": false
+      },
+      "returns": {
+        "type": "object",
+        "properties": {
+          "schedules": { "type": "array" },
+          "count": { "type": "number" }
+        }
+      },
+      "riskLevel": "low"
+    }
+  ],
+  "permissions": {
+    "commands": ["schedule.*"]
+  },
+  "resources": {
+    "maxMemoryMb": 32,
+    "maxCpuPercent": 10,
+    "timeoutMs": 5000
+  }
+}

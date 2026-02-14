@@ -1,0 +1,50 @@
+{
+  "id": "notification",
+  "name": "Notification",
+  "version": "1.0.0",
+  "description": "Built-in Gear for sending notifications to the user via the Bridge UI.",
+  "author": "Meridian",
+  "license": "Apache-2.0",
+  "origin": "builtin",
+  "checksum": "builtin",
+  "actions": [
+    {
+      "name": "send_notification",
+      "description": "Send a notification to the user",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string",
+            "description": "The notification message"
+          },
+          "level": {
+            "type": "string",
+            "enum": ["info", "warning", "error"],
+            "description": "Notification severity level (default: info)"
+          }
+        },
+        "required": ["message"],
+        "additionalProperties": false
+      },
+      "returns": {
+        "type": "object",
+        "properties": {
+          "sent": { "type": "boolean" },
+          "level": { "type": "string" },
+          "sentAt": { "type": "string" }
+        },
+        "required": ["sent", "level", "sentAt"]
+      },
+      "riskLevel": "low"
+    }
+  ],
+  "permissions": {
+    "commands": ["notification.send"]
+  },
+  "resources": {
+    "maxMemoryMb": 16,
+    "maxCpuPercent": 5,
+    "timeoutMs": 5000
+  }
+}

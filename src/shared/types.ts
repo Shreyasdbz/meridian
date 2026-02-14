@@ -312,6 +312,7 @@ export interface GearContext {
   log(message: string): void;
   progress(percent: number, message?: string): void;
   createSubJob(description: string): Promise<JobResult>;
+  executeCommand?(command: string, params: Record<string, unknown>): Promise<Record<string, unknown>>;
 }
 
 /**

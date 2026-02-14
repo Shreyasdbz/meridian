@@ -47,6 +47,14 @@ export type LogSink = (gearId: string, message: string) => void;
 export type ProgressSink = (percent: number, message?: string) => void;
 
 /**
+ * Callback for executing system commands (schedule.*, notification.*, etc.).
+ */
+export type CommandHandler = (
+  command: string,
+  params: Record<string, unknown>,
+) => Promise<Record<string, unknown>>;
+
+/**
  * Configuration for creating a GearContext instance.
  */
 export interface GearContextConfig {
@@ -64,6 +72,8 @@ export interface GearContextConfig {
   onLog?: LogSink;
   /** Callback for progress updates. */
   onProgress?: ProgressSink;
+  /** Callback for executing system commands. */
+  commandHandler?: CommandHandler;
 }
 
 // ---------------------------------------------------------------------------
@@ -298,6 +308,7 @@ export class GearContextImpl implements GearContext {
   private readonly subJobCreator?: SubJobCreator;
   private readonly logSink?: LogSink;
   private readonly progressSink?: ProgressSink;
+  private readonly commandHandlerFn?: CommandHandler;
 
   constructor(config: GearContextConfig) {
     this.params = Object.freeze({ ...config.params });
@@ -307,6 +318,7 @@ export class GearContextImpl implements GearContext {
     this.subJobCreator = config.createSubJob;
     this.logSink = config.onLog;
     this.progressSink = config.onProgress;
+    this.commandHandlerFn = config.commandHandler;
   }
 
   /**
@@ -483,6 +495,23 @@ export class GearContextImpl implements GearContext {
   progress(percent: number, message?: string): void {
     const clamped = Math.max(0, Math.min(100, percent));
     this.progressSink?.(clamped, message);
+  }
+
+  /**
+   * Execute a system command (e.g., schedule.create, notification.send).
+   * Only available when a command handler is configured.
+   */
+  async executeCommand(
+    command: string,
+    params: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    if (!this.commandHandlerFn) {
+      throw new GearSandboxError(
+        `executeCommand not available for Gear '${this.manifest.id}': no command handler configured`,
+      );
+    }
+
+    return this.commandHandlerFn(command, params);
   }
 
   /**

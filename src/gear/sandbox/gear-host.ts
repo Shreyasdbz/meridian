@@ -78,6 +78,15 @@ export type LogCallback = (gearId: string, message: string) => void;
 export type SubJobCallback = (description: string, requestId: string) => void;
 
 /**
+ * Callback for handling system command requests from Gear.
+ * Returns the command result to be sent back to the sandbox.
+ */
+export type CommandCallback = (
+  command: string,
+  params: Record<string, unknown>,
+) => Promise<Record<string, unknown>>;
+
+/**
  * Configuration for the GearHost.
  */
 export interface GearHostConfig {
@@ -93,6 +102,8 @@ export interface GearHostConfig {
   onLog?: LogCallback;
   /** Callback for sub-job requests from Gear. */
   onSubJob?: SubJobCallback;
+  /** Callback for system command requests from Gear. */
+  onCommand?: CommandCallback;
   /** Function to retrieve the stored checksum for a Gear. */
   getStoredChecksum: (gearId: string) => Promise<string>;
   /** Function to disable a Gear in the registry. */
@@ -422,6 +433,50 @@ export class GearHost {
               const description = message['description'] as string;
               const requestId = message['requestId'] as string;
               this.config.onSubJob?.(description, requestId);
+              continue;
+            }
+
+            // Handle command requests from Gear (v0.2)
+            if (message['type'] === 'command') {
+              const command = message['command'] as string;
+              const cmdParams = message['params'] as Record<string, unknown>;
+              const requestId = message['requestId'] as string;
+              if (this.config.onCommand) {
+                void this.config.onCommand(command, cmdParams).then((result) => {
+                  const response = JSON.stringify({
+                    type: 'command_response',
+                    requestId,
+                    result,
+                  });
+                  try {
+                    stdin.write(response + '\n');
+                  } catch {
+                    // Sandbox already closed
+                  }
+                }).catch((cmdError: unknown) => {
+                  const response = JSON.stringify({
+                    type: 'command_response',
+                    requestId,
+                    error: cmdError instanceof Error ? cmdError.message : String(cmdError),
+                  });
+                  try {
+                    stdin.write(response + '\n');
+                  } catch {
+                    // Sandbox already closed
+                  }
+                });
+              } else {
+                const response = JSON.stringify({
+                  type: 'command_response',
+                  requestId,
+                  error: 'Command execution not supported',
+                });
+                try {
+                  stdin.write(response + '\n');
+                } catch {
+                  // Sandbox already closed
+                }
+              }
               continue;
             }
 

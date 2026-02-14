@@ -1,0 +1,63 @@
+{
+  "id": "web-search",
+  "name": "Web Search",
+  "version": "1.0.0",
+  "description": "Built-in Gear for searching the web via DuckDuckGo HTML endpoint. Returns structured search results.",
+  "author": "Meridian",
+  "license": "Apache-2.0",
+  "origin": "builtin",
+  "checksum": "builtin",
+  "actions": [
+    {
+      "name": "search",
+      "description": "Search the web using DuckDuckGo and return structured results",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "The search query"
+          },
+          "maxResults": {
+            "type": "number",
+            "description": "Maximum number of results to return (default: 5, max: 20)"
+          }
+        },
+        "required": ["query"],
+        "additionalProperties": false
+      },
+      "returns": {
+        "type": "object",
+        "properties": {
+          "results": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "title": { "type": "string" },
+                "url": { "type": "string" },
+                "snippet": { "type": "string" }
+              }
+            }
+          },
+          "query": { "type": "string" },
+          "resultCount": { "type": "number" },
+          "searchedAt": { "type": "string" }
+        },
+        "required": ["results", "query", "resultCount", "searchedAt"]
+      },
+      "riskLevel": "low"
+    }
+  ],
+  "permissions": {
+    "network": {
+      "domains": ["html.duckduckgo.com"],
+      "protocols": ["https"]
+    }
+  },
+  "resources": {
+    "maxMemoryMb": 64,
+    "maxCpuPercent": 25,
+    "timeoutMs": 15000
+  }
+}

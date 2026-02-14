@@ -8,3 +8,12 @@ export { execute as webFetchExecute } from './web-fetch/index.js';
 
 // Shell — shell command execution with special hardening (Phase 5.6)
 export { execute as shellExecute } from './shell/index.js';
+
+// Web Search — DuckDuckGo web search (Phase 9.3)
+export { execute as webSearchExecute } from './web-search/index.js';
+
+// Scheduler — cron schedule management (Phase 9.3)
+export { execute as schedulerExecute } from './scheduler/index.js';
+
+// Notification — user notification sending (Phase 9.3)
+export { execute as notificationExecute } from './notification/index.js';

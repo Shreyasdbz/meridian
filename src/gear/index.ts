@@ -46,6 +46,7 @@ export type {
   ProgressCallback,
   LogCallback,
   SubJobCallback,
+  CommandCallback,
   GearHostConfig,
 } from './sandbox/gear-host.js';
 
@@ -63,6 +64,7 @@ export type {
   SubJobCreator,
   LogSink,
   ProgressSink,
+  CommandHandler,
   GearContextConfig,
   DnsResolver,
 } from './context.js';
