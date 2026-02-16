@@ -966,6 +966,248 @@ describe('Job routes', () => {
     await server.close();
   });
 
+  it('should reject an awaiting_approval job', async () => {
+    const { server } = await createServer({
+      config: TEST_CONFIG,
+      db,
+      logger: mockLogger as unknown as Logger,
+      disableRateLimit: true,
+    });
+
+    const { cookie, csrfToken } = await setupAuth(server);
+
+    const convRes = await server.inject({
+      method: 'POST',
+      url: '/api/conversations',
+      headers: { cookie, 'x-csrf-token': csrfToken },
+      payload: { title: 'Reject test' },
+    });
+    const conv = JSON.parse(convRes.body);
+
+    const msgRes = await server.inject({
+      method: 'POST',
+      url: '/api/messages',
+      headers: { cookie, 'x-csrf-token': csrfToken },
+      payload: { conversationId: conv.id, content: 'Do something risky' },
+    });
+    const msg = JSON.parse(msgRes.body);
+
+    // Move job to awaiting_approval
+    await db.run(
+      'meridian',
+      `UPDATE jobs SET status = 'awaiting_approval' WHERE id = ?`,
+      [msg.jobId],
+    );
+
+    // Reject the job
+    const rejectRes = await server.inject({
+      method: 'POST',
+      url: `/api/jobs/${msg.jobId}/reject`,
+      headers: { cookie, 'x-csrf-token': csrfToken },
+      payload: { reason: 'Too risky' },
+    });
+
+    expect(rejectRes.statusCode).toBe(200);
+    const rejected = JSON.parse(rejectRes.body);
+    expect(rejected.status).toBe('failed');
+    expect(rejected.message).toContain('Too risky');
+
+    // Verify the job is in failed state with the error
+    const jobRes = await server.inject({
+      method: 'GET',
+      url: `/api/jobs/${msg.jobId}`,
+      headers: { cookie },
+    });
+    const job = JSON.parse(jobRes.body);
+    expect(job.status).toBe('failed');
+    expect(job.error?.code).toBe('REJECTED');
+    expect(job.error?.message).toBe('Too risky');
+
+    await server.close();
+  });
+
+  it('should reject a job with default message when no reason provided', async () => {
+    const { server } = await createServer({
+      config: TEST_CONFIG,
+      db,
+      logger: mockLogger as unknown as Logger,
+      disableRateLimit: true,
+    });
+
+    const { cookie, csrfToken } = await setupAuth(server);
+
+    const convRes = await server.inject({
+      method: 'POST',
+      url: '/api/conversations',
+      headers: { cookie, 'x-csrf-token': csrfToken },
+      payload: { title: 'Reject no reason' },
+    });
+    const conv = JSON.parse(convRes.body);
+
+    const msgRes = await server.inject({
+      method: 'POST',
+      url: '/api/messages',
+      headers: { cookie, 'x-csrf-token': csrfToken },
+      payload: { conversationId: conv.id, content: 'Something' },
+    });
+    const msg = JSON.parse(msgRes.body);
+
+    await db.run(
+      'meridian',
+      `UPDATE jobs SET status = 'awaiting_approval' WHERE id = ?`,
+      [msg.jobId],
+    );
+
+    const rejectRes = await server.inject({
+      method: 'POST',
+      url: `/api/jobs/${msg.jobId}/reject`,
+      headers: { cookie, 'x-csrf-token': csrfToken },
+      payload: {},
+    });
+
+    expect(rejectRes.statusCode).toBe(200);
+    const rejected = JSON.parse(rejectRes.body);
+    expect(rejected.message).toContain('rejected by user');
+
+    await server.close();
+  });
+
+  it('should reject rejection of a non-awaiting_approval job', async () => {
+    const { server } = await createServer({
+      config: TEST_CONFIG,
+      db,
+      logger: mockLogger as unknown as Logger,
+      disableRateLimit: true,
+    });
+
+    const { cookie, csrfToken } = await setupAuth(server);
+
+    const convRes = await server.inject({
+      method: 'POST',
+      url: '/api/conversations',
+      headers: { cookie, 'x-csrf-token': csrfToken },
+      payload: { title: 'Wrong state' },
+    });
+    const conv = JSON.parse(convRes.body);
+
+    const msgRes = await server.inject({
+      method: 'POST',
+      url: '/api/messages',
+      headers: { cookie, 'x-csrf-token': csrfToken },
+      payload: { conversationId: conv.id, content: 'Task' },
+    });
+    const msg = JSON.parse(msgRes.body);
+
+    // Job is in 'pending' state, not 'awaiting_approval'
+    const res = await server.inject({
+      method: 'POST',
+      url: `/api/jobs/${msg.jobId}/reject`,
+      headers: { cookie, 'x-csrf-token': csrfToken },
+      payload: {},
+    });
+
+    expect(res.statusCode).toBe(409);
+
+    await server.close();
+  });
+
+  it('should create a nonce for an awaiting_approval job', async () => {
+    const { server } = await createServer({
+      config: TEST_CONFIG,
+      db,
+      logger: mockLogger as unknown as Logger,
+      disableRateLimit: true,
+    });
+
+    const { cookie, csrfToken } = await setupAuth(server);
+
+    const convRes = await server.inject({
+      method: 'POST',
+      url: '/api/conversations',
+      headers: { cookie, 'x-csrf-token': csrfToken },
+      payload: { title: 'Nonce test' },
+    });
+    const conv = JSON.parse(convRes.body);
+
+    const msgRes = await server.inject({
+      method: 'POST',
+      url: '/api/messages',
+      headers: { cookie, 'x-csrf-token': csrfToken },
+      payload: { conversationId: conv.id, content: 'Need approval' },
+    });
+    const msg = JSON.parse(msgRes.body);
+
+    // Move to awaiting_approval
+    await db.run(
+      'meridian',
+      `UPDATE jobs SET status = 'awaiting_approval' WHERE id = ?`,
+      [msg.jobId],
+    );
+
+    // Request a nonce
+    const nonceRes = await server.inject({
+      method: 'POST',
+      url: `/api/jobs/${msg.jobId}/nonce`,
+      headers: { cookie, 'x-csrf-token': csrfToken },
+    });
+
+    expect(nonceRes.statusCode).toBe(200);
+    const { nonce } = JSON.parse(nonceRes.body);
+    expect(typeof nonce).toBe('string');
+    expect(nonce.length).toBeGreaterThan(0);
+
+    // Use the nonce to approve
+    const approveRes = await server.inject({
+      method: 'POST',
+      url: `/api/jobs/${msg.jobId}/approve`,
+      headers: { cookie, 'x-csrf-token': csrfToken },
+      payload: { nonce },
+    });
+
+    expect(approveRes.statusCode).toBe(200);
+    expect(JSON.parse(approveRes.body).status).toBe('executing');
+
+    await server.close();
+  });
+
+  it('should reject nonce creation for non-awaiting_approval job', async () => {
+    const { server } = await createServer({
+      config: TEST_CONFIG,
+      db,
+      logger: mockLogger as unknown as Logger,
+      disableRateLimit: true,
+    });
+
+    const { cookie, csrfToken } = await setupAuth(server);
+
+    const convRes = await server.inject({
+      method: 'POST',
+      url: '/api/conversations',
+      headers: { cookie, 'x-csrf-token': csrfToken },
+      payload: { title: 'Bad nonce' },
+    });
+    const conv = JSON.parse(convRes.body);
+
+    const msgRes = await server.inject({
+      method: 'POST',
+      url: '/api/messages',
+      headers: { cookie, 'x-csrf-token': csrfToken },
+      payload: { conversationId: conv.id, content: 'Pending task' },
+    });
+    const msg = JSON.parse(msgRes.body);
+
+    // Job is in 'pending' — nonce should be rejected
+    const res = await server.inject({
+      method: 'POST',
+      url: `/api/jobs/${msg.jobId}/nonce`,
+      headers: { cookie, 'x-csrf-token': csrfToken },
+    });
+
+    expect(res.statusCode).toBe(409);
+
+    await server.close();
+  });
+
   it('should replay a cancelled job', async () => {
     const { server } = await createServer({
       config: TEST_CONFIG,

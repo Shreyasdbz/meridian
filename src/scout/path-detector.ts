@@ -69,6 +69,23 @@ const DEFERRED_ACTION_PATTERNS: RegExp[] = [
   /Your (?:file|document|project) has been (?:created|set up|configured)\b/i,
 ];
 
+/**
+ * Patterns indicating Scout falsely claims inability to perform actions
+ * that available Gear plugins can handle. When these appear in a fast-path
+ * response and relevant Gear is registered, the response should be rerouted
+ * to force a full-path ExecutionPlan.
+ */
+const INABILITY_PATTERNS: RegExp[] = [
+  /I (?:don't|do not|cannot|can't) have (?:direct )?access to/i,
+  /I (?:don't|do not|cannot|can't) (?:access|read|write|browse|view|see|list|open|check|search)/i,
+  /I'm (?:unable|not able) to (?:access|read|write|browse|view|list|open|check|search)/i,
+  /I (?:don't|do not) have (?:the ability|the capability|filesystem|file system|internet|web|shell) access/i,
+  /(?:no|don't have) access to (?:your|the) (?:file ?system|files|folders|directories|computer|machine|system)/i,
+  /(?:can't|cannot) (?:interact with|access) (?:your|the) (?:local|file ?system|computer|machine)/i,
+  /as an AI,? I (?:don't|cannot|can't)/i,
+  /I'm (?:just )?(?:a language model|an AI|a text-based)/i,
+];
+
 // ---------------------------------------------------------------------------
 // Plan structure detection
 // ---------------------------------------------------------------------------
@@ -85,48 +102,81 @@ const STEP_JSON_PATTERN = /\{\s*"(?:gear|action|riskLevel)"\s*:/;
 // ---------------------------------------------------------------------------
 
 /**
+ * Validate that a parsed JSON object conforms to the ExecutionPlan schema.
+ */
+function validatePlanShape(parsed: Record<string, unknown>): ExecutionPlan | undefined {
+  if (
+    typeof parsed['id'] !== 'string' ||
+    typeof parsed['jobId'] !== 'string' ||
+    !Array.isArray(parsed['steps'])
+  ) {
+    return undefined;
+  }
+
+  const steps = parsed['steps'] as Record<string, unknown>[];
+  for (const step of steps) {
+    if (
+      typeof step['id'] !== 'string' ||
+      typeof step['gear'] !== 'string' ||
+      typeof step['action'] !== 'string' ||
+      typeof step['parameters'] !== 'object' ||
+      step['parameters'] === null ||
+      typeof step['riskLevel'] !== 'string'
+    ) {
+      return undefined;
+    }
+  }
+
+  return parsed as unknown as ExecutionPlan;
+}
+
+/**
  * Attempt to parse raw LLM output as an ExecutionPlan.
  * Returns the plan if valid JSON with required plan fields, undefined otherwise.
+ *
+ * Handles three formats:
+ * 1. Pure JSON starting with {
+ * 2. JSON wrapped in markdown code blocks (```json ... ```)
+ * 3. Text followed by a JSON code block (extracts the JSON)
  */
 export function tryParseExecutionPlan(raw: string): ExecutionPlan | undefined {
   const trimmed = raw.trim();
 
-  // Must start with { to be a JSON object
-  if (!trimmed.startsWith('{')) {
-    return undefined;
-  }
-
-  try {
-    const parsed = JSON.parse(trimmed) as Record<string, unknown>;
-
-    // Validate required ExecutionPlan fields
-    if (
-      typeof parsed['id'] !== 'string' ||
-      typeof parsed['jobId'] !== 'string' ||
-      !Array.isArray(parsed['steps'])
-    ) {
+  // Format 1: Pure JSON starting with {
+  if (trimmed.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(trimmed) as Record<string, unknown>;
+      return validatePlanShape(parsed);
+    } catch {
       return undefined;
     }
-
-    // Validate that each step has required fields
-    const steps = parsed['steps'] as Record<string, unknown>[];
-    for (const step of steps) {
-      if (
-        typeof step['id'] !== 'string' ||
-        typeof step['gear'] !== 'string' ||
-        typeof step['action'] !== 'string' ||
-        typeof step['parameters'] !== 'object' ||
-        step['parameters'] === null ||
-        typeof step['riskLevel'] !== 'string'
-      ) {
-        return undefined;
-      }
-    }
-
-    return parsed as unknown as ExecutionPlan;
-  } catch {
-    return undefined;
   }
+
+  // Format 2 & 3: JSON wrapped in or preceded by text with markdown code blocks
+  const codeBlockMatch = /```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/.exec(trimmed);
+  if (codeBlockMatch?.[1]) {
+    try {
+      const parsed = JSON.parse(codeBlockMatch[1]) as Record<string, unknown>;
+      return validatePlanShape(parsed);
+    } catch {
+      return undefined;
+    }
+  }
+
+  // Format: Text that contains a raw JSON object (find first { and try to parse from there)
+  const jsonStart = trimmed.indexOf('{');
+  if (jsonStart > 0) {
+    const jsonCandidate = trimmed.slice(jsonStart);
+    try {
+      const parsed = JSON.parse(jsonCandidate) as Record<string, unknown>;
+      return validatePlanShape(parsed);
+    } catch {
+      // JSON might be truncated or invalid — give up
+      return undefined;
+    }
+  }
+
+  return undefined;
 }
 
 /**
@@ -150,10 +200,11 @@ export function detectPath(raw: string): PathDetectionResult {
  * Verify that a fast-path response is genuinely conversational and does not
  * contain action-like behavior that should have been a full-path plan.
  *
- * Three checks (Section 4.3):
+ * Four checks (Section 4.3):
  * 1. No JSON structures resembling execution plans
  * 2. No references to registered Gear names or action identifiers
  * 3. No deferred-action language patterns
+ * 4. No false inability claims (saying "I can't access" when Gear can)
  *
  * @returns null if verification passes, or a string describing the failure reason
  */
@@ -189,6 +240,17 @@ export function verifyFastPath(
   for (const pattern of DEFERRED_ACTION_PATTERNS) {
     if (pattern.test(text)) {
       return `Response contains deferred-action language: "${text.match(pattern)?.[0]}"`;
+    }
+  }
+
+  // Check 4: No false inability claims when Gear plugins are available
+  // If Scout says "I can't access files" but file-manager Gear is registered,
+  // reroute to force a plan that uses the Gear.
+  if (context.registeredGearNames.length > 0) {
+    for (const pattern of INABILITY_PATTERNS) {
+      if (pattern.test(text)) {
+        return `Response claims inability but Gear plugins are available: "${text.match(pattern)?.[0]}"`;
+      }
     }
   }
 

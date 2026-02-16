@@ -18,7 +18,7 @@ import { MessageList } from './message-list.js';
 const AUTO_NEW_CONVERSATION_MS = 30 * 60 * 1000; // 30 minutes
 
 interface ConversationsResponse {
-  conversations: Conversation[];
+  items: Conversation[];
   total: number;
 }
 
@@ -140,10 +140,10 @@ export function ChatPage(): React.ReactElement {
       setLoading(true);
       try {
         const data = await api.get<ConversationsResponse>('/conversations');
-        setConversations(data.conversations);
+        setConversations(data.items);
 
         // Auto-select first conversation if none active
-        const first = data.conversations[0];
+        const first = data.items[0];
         if (!activeConversationId && first) {
           setActiveConversationId(first.id);
         }

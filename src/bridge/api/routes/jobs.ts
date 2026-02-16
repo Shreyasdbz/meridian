@@ -319,6 +319,141 @@ export function jobRoutes(
     });
   });
 
+  // POST /api/jobs/:id/reject — Reject a pending approval
+  server.post<{ Params: { id: string } }>('/api/jobs/:id/reject', {
+    schema: {
+      params: {
+        type: 'object',
+        required: ['id'],
+        properties: {
+          id: { type: 'string' },
+        },
+      },
+      body: {
+        type: 'object',
+        properties: {
+          reason: { type: 'string' },
+        },
+      },
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            id: { type: 'string' },
+            status: { type: 'string' },
+            message: { type: 'string' },
+          },
+        },
+      },
+    },
+  }, async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply): Promise<void> => {
+    const { id } = request.params;
+    const body = (request.body ?? {}) as { reason?: string };
+
+    const rows = await db.query<JobRow>(
+      'meridian',
+      'SELECT * FROM jobs WHERE id = ?',
+      [id],
+    );
+
+    if (rows.length === 0) {
+      throw new NotFoundError(`Job '${id}' not found`);
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    const row = rows[0]!;
+
+    if (row.status !== 'awaiting_approval') {
+      throw new ConflictError(
+        `Job '${id}' is in status '${row.status}', expected 'awaiting_approval'`,
+      );
+    }
+
+    // Transition to failed — via Axis when available, direct SQL otherwise
+    const errorJson = JSON.stringify({
+      code: 'REJECTED',
+      message: body.reason ?? 'Rejected by user',
+      retriable: false,
+    });
+
+    if (axis) {
+      const transitioned = await axis.internals.jobQueue.transition(
+        id,
+        'awaiting_approval',
+        'failed',
+        { error: errorJson },
+      );
+      if (!transitioned) {
+        throw new ConflictError(`Job '${id}' state changed concurrently`);
+      }
+    } else {
+      const now = new Date().toISOString();
+      const result = await db.run(
+        'meridian',
+        `UPDATE jobs SET status = 'failed', error_json = ?, completed_at = ?, updated_at = ?
+         WHERE id = ? AND status = 'awaiting_approval'`,
+        [errorJson, now, now, id],
+      );
+
+      if (result.changes === 0) {
+        throw new ConflictError(`Job '${id}' state changed concurrently`);
+      }
+    }
+
+    logger.info('Job rejected', { jobId: id, reason: body.reason, component: 'bridge' });
+
+    await reply.send({
+      id,
+      status: 'failed',
+      message: body.reason ? `Job rejected: ${body.reason}` : 'Job rejected by user',
+    });
+  });
+
+  // POST /api/jobs/:id/nonce — Create an approval nonce for a job awaiting approval
+  server.post<{ Params: { id: string } }>('/api/jobs/:id/nonce', {
+    schema: {
+      params: {
+        type: 'object',
+        required: ['id'],
+        properties: {
+          id: { type: 'string' },
+        },
+      },
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            nonce: { type: 'string' },
+          },
+        },
+      },
+    },
+  }, async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply): Promise<void> => {
+    const { id } = request.params;
+
+    const rows = await db.query<JobRow>(
+      'meridian',
+      'SELECT * FROM jobs WHERE id = ?',
+      [id],
+    );
+
+    if (rows.length === 0) {
+      throw new NotFoundError(`Job '${id}' not found`);
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    const row = rows[0]!;
+
+    if (row.status !== 'awaiting_approval') {
+      throw new ConflictError(
+        `Job '${id}' is in status '${row.status}', expected 'awaiting_approval'`,
+      );
+    }
+
+    const nonce = await authService.createApprovalNonce(id);
+    await reply.send({ nonce });
+  });
+
   // POST /api/jobs/:id/cancel — Cancel a job
   server.post<{ Params: { id: string } }>('/api/jobs/:id/cancel', {
     schema: {

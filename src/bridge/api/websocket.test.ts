@@ -606,7 +606,7 @@ describe('WebSocket — message types', () => {
 // ---------------------------------------------------------------------------
 
 describe('WebSocket — broadcasting', () => {
-  it('should broadcast to all authenticated connections', async () => {
+  it('should broadcast to one connection per session (dedup)', async () => {
     const { server, authService, wsManager } = await createServer({
       config: TEST_CONFIG,
       db,
@@ -626,13 +626,12 @@ describe('WebSocket — broadcasting', () => {
       message: 'Broadcast test',
     };
 
+    // Per-session dedup: only the first connection for each session receives
     const p1 = waitForMessage(ws1, (m) => m.type === 'notification');
-    const p2 = waitForMessage(ws2, (m) => m.type === 'notification');
     wsManager.broadcast(msg);
 
-    const [r1, r2] = await Promise.all([p1, p2]);
+    const r1 = await p1;
     expect(r1).toEqual(msg);
-    expect(r2).toEqual(msg);
 
     ws1.close();
     ws2.close();

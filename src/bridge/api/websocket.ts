@@ -488,8 +488,17 @@ export function websocketRoutes(
   const manager: WebSocketManager = {
     broadcast(message: WSMessage): void {
       const payload = JSON.stringify(message);
+      // Deduplicate per session — only send to the first active connection
+      // for each session to prevent duplicate message delivery when a client
+      // has multiple WebSocket connections (e.g., reconnect overlap).
+      const sentSessions = new Set<string>();
       for (const conn of connections) {
-        if (conn.authenticated && conn.socket.readyState === 1 /* OPEN */) {
+        if (
+          conn.authenticated &&
+          conn.socket.readyState === 1 /* OPEN */ &&
+          !sentSessions.has(conn.sessionId)
+        ) {
+          sentSessions.add(conn.sessionId);
           try {
             conn.socket.send(payload);
           } catch {
@@ -501,6 +510,7 @@ export function websocketRoutes(
 
     broadcastToSession(sessionId: string, message: WSMessage): void {
       const payload = JSON.stringify(message);
+      // Send to only the first active connection for the session
       for (const conn of connections) {
         if (
           conn.authenticated &&
@@ -512,6 +522,7 @@ export function websocketRoutes(
           } catch {
             // Socket is likely broken; will be cleaned up by 'close' or 'error' event
           }
+          break; // Only send to one connection per session
         }
       }
     },

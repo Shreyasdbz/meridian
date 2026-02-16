@@ -21,7 +21,7 @@ import { ScheduledJobsSection } from './scheduled-jobs-section.js';
 import { SystemHealthSection } from './system-health-section.js';
 
 interface JobsResponse {
-  jobs: Job[];
+  items: Job[];
   total: number;
 }
 
@@ -53,7 +53,7 @@ export function MissionControl(): React.ReactElement {
         const approvals: Job[] = [];
         const completed: Job[] = [];
 
-        for (const job of data.jobs) {
+        for (const job of data.items) {
           if (job.status === 'awaiting_approval') {
             approvals.push(job);
           } else if (

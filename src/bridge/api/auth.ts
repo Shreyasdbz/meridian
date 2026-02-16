@@ -107,12 +107,28 @@ export class AuthService {
       [hash, now, now],
     );
 
-    // Initialize the secrets vault with the same password
+    // Initialize or unlock the secrets vault with the same password
     if (this.vault && !this.vault.isUnlocked) {
-      const tier = detectDeploymentTier();
-      const vaultTier = tier === 'pi' ? 'low-power' : 'standard';
-      await this.vault.initialize(password, vaultTier);
-      this.logger.info('Secrets vault initialized');
+      try {
+        const tier = detectDeploymentTier();
+        const vaultTier = tier === 'pi' ? 'low-power' : 'standard';
+        await this.vault.initialize(password, vaultTier);
+        this.logger.info('Secrets vault initialized');
+      } catch {
+        // Vault file already exists (e.g. auth reset without vault reset).
+        // Try unlocking — if the password matches the old vault, reuse it.
+        try {
+          await this.vault.unlock(password);
+          this.logger.info('Secrets vault unlocked (existing vault)');
+        } catch {
+          // Old vault has a different password — reset it.
+          await this.vault.reset();
+          const tier = detectDeploymentTier();
+          const vaultTier = tier === 'pi' ? 'low-power' : 'standard';
+          await this.vault.initialize(password, vaultTier);
+          this.logger.warn('Secrets vault reset and re-initialized (password mismatch)');
+        }
+      }
     }
 
     this.logger.info('Initial password configured');
@@ -174,17 +190,26 @@ export class AuthService {
         await this.vault.unlock(password);
         this.logger.info('Secrets vault unlocked');
       } catch {
-        // Vault file doesn't exist — initialize it with the login password.
-        // This handles upgrades where the password was set before vault support.
+        // Vault file doesn't exist or password mismatch — try initialize, then reset.
         try {
           const tier = detectDeploymentTier();
           const vaultTier = tier === 'pi' ? 'low-power' : 'standard';
           await this.vault.initialize(password, vaultTier);
           this.logger.info('Secrets vault initialized on first login');
-        } catch (initErr: unknown) {
-          this.logger.warn('Failed to initialize secrets vault', {
-            error: initErr instanceof Error ? initErr.message : String(initErr),
-          });
+        } catch {
+          // Vault exists but password doesn't match (e.g. auth was reset).
+          // Reset vault and re-initialize with current password.
+          try {
+            await this.vault.reset();
+            const tier = detectDeploymentTier();
+            const vaultTier = tier === 'pi' ? 'low-power' : 'standard';
+            await this.vault.initialize(password, vaultTier);
+            this.logger.warn('Secrets vault reset and re-initialized (password mismatch on login)');
+          } catch (resetErr: unknown) {
+            this.logger.warn('Failed to reset secrets vault', {
+              error: resetErr instanceof Error ? resetErr.message : String(resetErr),
+            });
+          }
         }
       }
     }

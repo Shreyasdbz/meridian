@@ -303,10 +303,12 @@ describe('detectAndVerifyPath', () => {
     expect(result.verificationFailure).toContain('deferred-action language');
   });
 
-  it('should detect embedded plan JSON in text response', () => {
+  it('should extract embedded plan JSON from text response as full path', () => {
     const text = 'Here is the plan: {"id": "p1", "jobId": "j1", "steps": []}';
     const result = detectAndVerifyPath(text, defaultVerificationContext);
-    expect(result.path).toBe('fast');
-    expect(result.verificationFailure).toContain('JSON structures');
+    // tryParseExecutionPlan now extracts embedded JSON and classifies as full path
+    expect(result.path).toBe('full');
+    expect(result.plan).toBeDefined();
+    expect(result.plan?.id).toBe('p1');
   });
 });

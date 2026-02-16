@@ -280,10 +280,25 @@ export interface GearRuntime {
  * builtin directory is not found.
  */
 export function loadBuiltinManifests(): GearManifest[] {
+  // Try multiple locations: the built output may not contain the builtin/
+  // directory since tsup bundles code but doesn't copy JSON assets.
+  // 1. Relative to the module (works in dev/ts-node)
+  // 2. Relative to project root (works in production builds)
   const currentDir = dirname(fileURLToPath(import.meta.url));
-  const builtinDir = join(currentDir, 'builtin');
+  const candidates = [
+    join(currentDir, 'builtin'),
+    join(process.cwd(), 'src', 'gear', 'builtin'),
+  ];
 
-  if (!existsSync(builtinDir)) {
+  let builtinDir: string | undefined;
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) {
+      builtinDir = candidate;
+      break;
+    }
+  }
+
+  if (!builtinDir) {
     return [];
   }
 

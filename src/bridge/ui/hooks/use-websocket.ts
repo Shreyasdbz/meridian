@@ -1,3 +1,7 @@
+// Singleton WebSocket connection shared across all components.
+// Prevents duplicate message delivery when multiple components (ChatPage,
+// MissionControl) each subscribe to WebSocket events.
+
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import type { WSMessage } from '@meridian/shared';
@@ -23,128 +27,194 @@ const MAX_RECONNECT_DELAY_MS = 30000;
 const RECONNECT_BACKOFF_FACTOR = 2;
 const WS_CLOSE_SESSION_EXPIRED = 4001;
 
-export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketReturn {
-  const { onMessage, enabled = true } = options;
-  const [connectionState, setConnectionState] = useState<ConnectionState>('disconnected');
+// ---------------------------------------------------------------------------
+// Module-level singleton state
+// ---------------------------------------------------------------------------
 
-  const wsRef = useRef<WebSocket | null>(null);
-  const reconnectDelayRef = useRef(INITIAL_RECONNECT_DELAY_MS);
-  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const onMessageRef = useRef(onMessage);
-  onMessageRef.current = onMessage;
+type MessageHandler = (msg: WSMessage) => void;
+type StateHandler = (state: ConnectionState) => void;
 
-  // Use refs for values that async callbacks need to read at call time
-  const enabledRef = useRef(enabled);
-  enabledRef.current = enabled;
-  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
-  const isAuthenticatedRef = useRef(isAuthenticated);
-  isAuthenticatedRef.current = isAuthenticated;
+let sharedWs: WebSocket | null = null;
+let sharedState: ConnectionState = 'disconnected';
+let reconnectDelay = INITIAL_RECONNECT_DELAY_MS;
+let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+let subscriberCount = 0;
+let connecting = false;
 
-  const send = useCallback((message: WSMessage): void => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify(message));
-    }
-  }, []);
+const messageHandlers = new Set<MessageHandler>();
+const stateHandlers = new Set<StateHandler>();
 
-  const scheduleReconnect = useCallback((connectFn: () => Promise<void>): void => {
-    if (!enabledRef.current || !isAuthenticatedRef.current) return;
+function setSharedState(state: ConnectionState): void {
+  sharedState = state;
+  for (const handler of stateHandlers) {
+    handler(state);
+  }
+}
 
-    const delay = reconnectDelayRef.current;
-    reconnectDelayRef.current = Math.min(delay * RECONNECT_BACKOFF_FACTOR, MAX_RECONNECT_DELAY_MS);
-    reconnectTimerRef.current = setTimeout(() => {
-      void connectFn();
-    }, delay);
-  }, []);
+function sendShared(msg: WSMessage): void {
+  if (sharedWs?.readyState === WebSocket.OPEN) {
+    sharedWs.send(JSON.stringify(msg));
+  }
+}
 
-  const connect = useCallback(async (): Promise<void> => {
-    // Don't connect if already connected or not enabled
-    if (
-      wsRef.current?.readyState === WebSocket.OPEN ||
-      !enabledRef.current ||
-      !isAuthenticatedRef.current
-    ) {
-      return;
-    }
+function scheduleReconnect(): void {
+  if (reconnectTimer || subscriberCount <= 0) return;
 
-    setConnectionState('connecting');
+  const isAuthenticated = useAuthStore.getState().isAuthenticated;
+  if (!isAuthenticated) return;
 
-    try {
-      // Step 1: Get a one-time connection token
-      const { token } = await api.post<{ token: string }>('/ws/token');
+  const delay = reconnectDelay;
+  reconnectDelay = Math.min(delay * RECONNECT_BACKOFF_FACTOR, MAX_RECONNECT_DELAY_MS);
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    void connectShared();
+  }, delay);
+}
 
-      // Step 2: Open WebSocket
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const ws = new WebSocket(`${protocol}//${window.location.host}/api/ws`);
-      wsRef.current = ws;
+async function connectShared(): Promise<void> {
+  // Guard against concurrent connect calls and redundant connections
+  if (
+    connecting ||
+    sharedWs?.readyState === WebSocket.OPEN ||
+    sharedWs?.readyState === WebSocket.CONNECTING ||
+    subscriberCount <= 0
+  ) {
+    return;
+  }
 
-      ws.onopen = (): void => {
-        setConnectionState('authenticating');
-        // Step 3: Send the one-time token as the first message
-        ws.send(JSON.stringify({ token }));
-      };
+  const isAuthenticated = useAuthStore.getState().isAuthenticated;
+  if (!isAuthenticated) return;
 
-      ws.onmessage = (event: MessageEvent): void => {
-        try {
-          const message = JSON.parse(event.data as string) as WSMessage;
+  connecting = true;
+  setSharedState('connecting');
 
-          // Handle connected confirmation
-          if (message.type === 'connected') {
-            setConnectionState('connected');
-            reconnectDelayRef.current = INITIAL_RECONNECT_DELAY_MS;
-          }
+  try {
+    // Step 1: Get a one-time connection token
+    const { token } = await api.post<{ token: string }>('/ws/token');
 
-          // Handle ping with pong
-          if (message.type === 'ping') {
-            send({ type: 'pong' });
-            return;
-          }
+    // Step 2: Open WebSocket
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const ws = new WebSocket(`${protocol}//${window.location.host}/api/ws`);
+    sharedWs = ws;
 
-          // Forward to handler
-          onMessageRef.current?.(message);
-        } catch {
-          // Ignore malformed messages
+    ws.onopen = (): void => {
+      setSharedState('authenticating');
+      // Step 3: Send the one-time token as the first message
+      ws.send(JSON.stringify({ token }));
+    };
+
+    ws.onmessage = (event: MessageEvent): void => {
+      try {
+        const message = JSON.parse(event.data as string) as WSMessage;
+
+        // Handle connected confirmation
+        if (message.type === 'connected') {
+          setSharedState('connected');
+          reconnectDelay = INITIAL_RECONNECT_DELAY_MS;
         }
-      };
 
-      ws.onclose = (event: CloseEvent): void => {
-        wsRef.current = null;
-        setConnectionState('disconnected');
-
-        // 4001 = Session Expired (architecture Section 6.5.3).
-        // Mark unauthenticated and do not reconnect.
-        if (event.code === WS_CLOSE_SESSION_EXPIRED) {
-          useAuthStore.getState().setAuthenticated(false);
+        // Handle ping with pong
+        if (message.type === 'ping') {
+          sendShared({ type: 'pong' });
           return;
         }
 
-        scheduleReconnect(connect);
-      };
-
-      ws.onerror = (): void => {
-        // onclose will fire after onerror, triggering reconnect
-      };
-    } catch {
-      setConnectionState('disconnected');
-      scheduleReconnect(connect);
-    }
-  }, [send, scheduleReconnect]);
-
-  useEffect(() => {
-    if (enabled && isAuthenticated) {
-      void connect();
-    }
-
-    return () => {
-      if (reconnectTimerRef.current) {
-        clearTimeout(reconnectTimerRef.current);
-        reconnectTimerRef.current = null;
-      }
-      if (wsRef.current) {
-        wsRef.current.close(1000, 'Component unmounted');
-        wsRef.current = null;
+        // Dispatch to all subscribers
+        for (const handler of messageHandlers) {
+          handler(message);
+        }
+      } catch {
+        // Ignore malformed messages
       }
     };
-  }, [enabled, isAuthenticated, connect]);
+
+    ws.onclose = (event: CloseEvent): void => {
+      sharedWs = null;
+      connecting = false;
+      setSharedState('disconnected');
+
+      // 4001 = Session Expired (architecture Section 6.5.3)
+      if (event.code === WS_CLOSE_SESSION_EXPIRED) {
+        useAuthStore.getState().setAuthenticated(false);
+        return;
+      }
+
+      scheduleReconnect();
+    };
+
+    ws.onerror = (): void => {
+      // onclose will fire after onerror, triggering reconnect
+    };
+
+    connecting = false;
+  } catch {
+    connecting = false;
+    setSharedState('disconnected');
+    scheduleReconnect();
+  }
+}
+
+function disconnectShared(): void {
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+  if (sharedWs) {
+    sharedWs.close(1000, 'All subscribers disconnected');
+    sharedWs = null;
+  }
+  connecting = false;
+  reconnectDelay = INITIAL_RECONNECT_DELAY_MS;
+  setSharedState('disconnected');
+}
+
+// ---------------------------------------------------------------------------
+// React hook — multiple components share the singleton connection
+// ---------------------------------------------------------------------------
+
+export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketReturn {
+  const { onMessage, enabled = true } = options;
+  const [connectionState, setConnectionState] = useState<ConnectionState>(sharedState);
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+
+  // Keep onMessage in a ref so the subscription handler always calls the latest version
+  const onMessageRef = useRef(onMessage);
+  onMessageRef.current = onMessage;
+
+  useEffect(() => {
+    if (!enabled || !isAuthenticated) return;
+
+    // Create a stable handler that reads from the ref
+    const msgHandler: MessageHandler = (msg) => {
+      onMessageRef.current?.(msg);
+    };
+
+    // Subscribe to the singleton
+    subscriberCount++;
+    messageHandlers.add(msgHandler);
+    stateHandlers.add(setConnectionState);
+
+    // Connect if not already connected
+    void connectShared();
+
+    // Sync current state
+    setConnectionState(sharedState);
+
+    return () => {
+      subscriberCount--;
+      messageHandlers.delete(msgHandler);
+      stateHandlers.delete(setConnectionState);
+
+      if (subscriberCount <= 0) {
+        subscriberCount = 0;
+        disconnectShared();
+      }
+    };
+  }, [enabled, isAuthenticated]);
+
+  const send = useCallback((message: WSMessage): void => {
+    sendShared(message);
+  }, []);
 
   return { connectionState, send };
 }

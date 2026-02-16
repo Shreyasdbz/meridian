@@ -317,8 +317,10 @@ describe('PendingApprovalsSection', () => {
     expect(screen.getByRole('button', { name: 'Reject' })).toBeInTheDocument();
   });
 
-  it('should call approve API when Approve button is clicked', async () => {
+  it('should call nonce then approve API when Approve button is clicked', async () => {
     const user = userEvent.setup();
+    // First call: nonce endpoint returns a nonce; second call: approve
+    mockApiPost.mockResolvedValueOnce({ nonce: 'test-nonce-123' });
     mockApiPost.mockResolvedValueOnce(undefined);
     const job = createTestJob({
       status: 'awaiting_approval',
@@ -329,10 +331,11 @@ describe('PendingApprovalsSection', () => {
 
     await user.click(screen.getByRole('button', { name: 'Approve' }));
 
-    expect(mockApiPost).toHaveBeenCalledWith(`/jobs/${job.id}/approve`);
+    expect(mockApiPost).toHaveBeenCalledWith(`/jobs/${job.id}/nonce`);
+    expect(mockApiPost).toHaveBeenCalledWith(`/jobs/${job.id}/approve`, { nonce: 'test-nonce-123' });
   });
 
-  it('should call reject API when Reject button is clicked', async () => {
+  it('should call reject API with empty body when Reject button is clicked', async () => {
     const user = userEvent.setup();
     mockApiPost.mockResolvedValueOnce(undefined);
     const job = createTestJob({
@@ -344,7 +347,7 @@ describe('PendingApprovalsSection', () => {
 
     await user.click(screen.getByRole('button', { name: 'Reject' }));
 
-    expect(mockApiPost).toHaveBeenCalledWith(`/jobs/${job.id}/reject`);
+    expect(mockApiPost).toHaveBeenCalledWith(`/jobs/${job.id}/reject`, {});
   });
 
   it('should display plan steps with risk levels', () => {

@@ -213,6 +213,131 @@ export function createPipelineProcessor(options: PipelineProcessorOptions): JobP
 
       // Fast path — conversational response, skip Sentinel/Gear
       if (pathType === 'fast') {
+        // Check if fast-path verification failed and rerouting is needed.
+        // This happens when Scout returns text but the path-detector found
+        // action-like content or false inability claims.
+        const requiresReroute = planPayload?.['requiresReroute'] === true;
+        if (requiresReroute) {
+          const rerouteReason = (planPayload?.['rerouteReason'] as string | undefined) ?? 'verification failed';
+          logger.warn('Fast-path verification failed, rerouting to full path', {
+            jobId,
+            reason: rerouteReason,
+          });
+
+          // Re-dispatch to Scout with forceFullPath=true
+          const retryRequest: AxisMessage = {
+            id: generateId(),
+            correlationId,
+            timestamp: new Date().toISOString(),
+            from: 'bridge' as ComponentId,
+            to: 'scout' as ComponentId,
+            type: 'plan.request',
+            jobId,
+            payload: {
+              userMessage,
+              jobId,
+              conversationId: job.conversationId,
+              conversationHistory,
+              forceFullPath: true,
+              additionalContext: `Your previous response was rejected because: ${rerouteReason}. You MUST produce an ExecutionPlan JSON using one of the available Gear plugins. Do NOT respond with plain text.`,
+            },
+          };
+
+          let retryResponse: AxisMessage;
+          try {
+            retryResponse = await router.dispatch(retryRequest);
+          } catch (error: unknown) {
+            const message = error instanceof Error ? error.message : String(error);
+            logger.error('Rerouted Scout dispatch failed', { jobId, error: message });
+            await jobQueue.transition(jobId, 'planning', 'failed', {
+              error: {
+                code: 'SCOUT_UNREACHABLE',
+                message: `Scout reroute failed: ${message}`,
+                retriable: true,
+              },
+            });
+            return;
+          }
+
+          // If reroute produced a plan, continue with validation
+          const retryPayload = retryResponse.payload;
+          const retryPath = retryPayload?.['path'] as string | undefined;
+          const retryPlan = retryPayload?.['plan'] as ExecutionPlan | undefined;
+
+          if (retryPath === 'full' && retryPlan && Array.isArray(retryPlan.steps) && retryPlan.steps.length > 0) {
+            // Got a plan — proceed to Sentinel validation
+            await jobQueue.transition(jobId, 'planning', 'validating', { plan: retryPlan });
+
+            const validateRequest: AxisMessage = {
+              id: generateId(),
+              correlationId,
+              timestamp: new Date().toISOString(),
+              from: 'bridge' as ComponentId,
+              to: 'sentinel' as ComponentId,
+              type: 'validate.request',
+              jobId,
+              payload: { plan: retryPlan },
+            };
+
+            let validateResponse: AxisMessage;
+            try {
+              validateResponse = await router.dispatch(validateRequest);
+            } catch (error: unknown) {
+              const message = error instanceof Error ? error.message : String(error);
+              logger.error('Sentinel dispatch failed after reroute', { jobId, error: message });
+              await jobQueue.transition(jobId, 'validating', 'failed', {
+                error: {
+                  code: 'SENTINEL_UNREACHABLE',
+                  message: `Sentinel validation failed: ${message}`,
+                  retriable: true,
+                },
+              });
+              return;
+            }
+
+            const validation = validateResponse.payload as unknown as ValidationResult;
+            if (!validation || typeof validation.verdict !== 'string') {
+              await jobQueue.transition(jobId, 'validating', 'failed', {
+                error: {
+                  code: 'INVALID_VALIDATION',
+                  message: 'Sentinel returned an invalid validation result',
+                  retriable: false,
+                },
+              });
+              return;
+            }
+
+            if (validation.verdict === 'rejected') {
+              await jobQueue.transition(jobId, 'validating', 'failed', {
+                validation,
+                error: { code: 'PLAN_REJECTED', message: validation.reasoning ?? 'Plan rejected', retriable: false },
+              });
+              return;
+            }
+
+            if (validation.verdict === 'needs_revision') {
+              await jobQueue.transition(jobId, 'validating', 'failed', {
+                validation,
+                error: { code: 'NEEDS_REVISION', message: validation.suggestedRevisions ?? 'Needs revision', retriable: true },
+              });
+              return;
+            }
+
+            if (validation.verdict === 'needs_user_approval') {
+              await jobQueue.transition(jobId, 'validating', 'awaiting_approval', { validation });
+              logger.info('Rerouted job awaiting user approval', { jobId });
+              return;
+            }
+
+            // Approved — execute
+            await executePlan(jobId, correlationId, retryPlan, validation, signal, router, jobQueue, db, logger, options.bridge, job.conversationId);
+            return;
+          }
+
+          // Reroute didn't produce a valid plan either — fall through to fast-path
+          logger.warn('Reroute did not produce a valid plan, using original text response', { jobId });
+        }
+
         const textResponse = planPayload?.['text'] as string | undefined;
 
         // Store assistant message
@@ -226,11 +351,13 @@ export function createPipelineProcessor(options: PipelineProcessorOptions): JobP
         }
 
         // Broadcast response via WebSocket (if bridge available)
-        if (options.bridge) {
+        // Send as a 'chunk' with done=true so the chat UI renders the message.
+        if (options.bridge && textResponse) {
           options.bridge.wsManager.broadcast({
-            type: 'result',
+            type: 'chunk',
             jobId,
-            result: { text: textResponse },
+            content: textResponse,
+            done: true,
           });
         }
 
@@ -780,24 +907,49 @@ export async function startMeridian(options?: {
   // Step 4: Register Scout, Sentinel, Journal, built-in Gear
   // -------------------------------------------------------------------------
 
-  // Scout — requires an LLM provider
-  let provider: LLMProvider;
-  if (options?.provider) {
-    provider = options.provider;
-  } else {
-    // Create provider from config
-    const { createProvider } = await import('@meridian/scout');
-    provider = createProvider({
-      type: config.scout.provider as 'anthropic' | 'openai' | 'google' | 'ollama' | 'openrouter',
-      model: config.scout.models.primary,
-    });
-  }
+  // Scout — requires an LLM provider.
+  // The API key lives in the secrets vault, which is only unlocked after user login.
+  // We use a lazy provider that defers creation until the first LLM call.
+  let resolvedProvider: LLMProvider | null = options?.provider ?? null;
+
+  const lazyProvider: LLMProvider = {
+    get id() { return resolvedProvider?.id ?? `${config.scout.provider}:${config.scout.models.primary}`; },
+    get name() { return resolvedProvider?.name ?? config.scout.provider; },
+    get maxContextTokens() { return resolvedProvider?.maxContextTokens ?? 200000; },
+    estimateTokens(text) { return resolvedProvider?.estimateTokens(text) ?? Math.ceil(text.length / 4); },
+    async *chat(request) {
+      if (!resolvedProvider) {
+        const { createProvider } = await import('@meridian/scout');
+        // Retrieve API key: vault first, then environment variable fallback
+        let apiKey: string | undefined;
+        if (vault.isUnlocked) {
+          const secretName = `${config.scout.provider}_api_key`;
+          const keyBuf = await vault.retrieve(secretName, 'gear:scout');
+          if (keyBuf) {
+            apiKey = keyBuf.toString('utf-8');
+            keyBuf.fill(0);
+          }
+        }
+        // Fall back to environment variable if vault doesn't have the key
+        if (!apiKey) {
+          const envKey = `${config.scout.provider.toUpperCase()}_API_KEY`;
+          apiKey = process.env[envKey];
+        }
+        resolvedProvider = createProvider({
+          type: config.scout.provider as 'anthropic' | 'openai' | 'google' | 'ollama' | 'openrouter',
+          model: config.scout.models.primary,
+          apiKey,
+        });
+      }
+      yield* resolvedProvider.chat(request);
+    },
+  };
 
   const builtinManifests = loadBuiltinManifests();
 
   const scout = createScout(
     {
-      provider,
+      provider: lazyProvider,
       primaryModel: config.scout.models.primary,
       secondaryModel: config.scout.models.secondary,
       temperature: config.scout.temperature,
@@ -839,7 +991,7 @@ export async function startMeridian(options?: {
   // Journal — full memory pipeline (Phase 11.1: Gear Suggester activation)
   const memoryStore = new MemoryStore({ db, logger });
   const reflector = new Reflector({
-    provider,
+    provider: lazyProvider,
     model: config.scout.models.primary,
     logger,
   });

@@ -4,7 +4,7 @@
 
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 
 import argon2 from 'argon2';
@@ -295,6 +295,21 @@ export class SecretsVault {
     }
 
     return warnings;
+  }
+
+  /**
+   * Reset the vault: delete the vault file and clear in-memory state.
+   * After reset, call initialize() to create a new vault.
+   */
+  async reset(): Promise<void> {
+    if (existsSync(this.vaultPath)) {
+      await unlink(this.vaultPath);
+    }
+    if (this.derivedKey) {
+      this.derivedKey.fill(0);
+    }
+    this.derivedKey = null;
+    this.vault = null;
   }
 
   /** Returns true if the vault is currently unlocked. */

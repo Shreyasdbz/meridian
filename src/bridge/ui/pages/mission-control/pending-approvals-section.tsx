@@ -3,7 +3,7 @@
 
 import { useCallback, useState } from 'react';
 
-import type { Job } from '@meridian/shared';
+import type { ExecutionStep, Job } from '@meridian/shared';
 
 import { Badge } from '../../components/badge.js';
 import { Button } from '../../components/button.js';
@@ -55,18 +55,21 @@ interface ApprovalCardProps {
 function ApprovalCard({ job, onSelect }: ApprovalCardProps): React.ReactElement {
   const [responding, setResponding] = useState(false);
 
-  const taskName = typeof job.metadata?.taskName === 'string'
-    ? job.metadata.taskName
-    : `Task ${job.id.slice(0, 8)}`;
-
-  const reason = job.validation?.reasoning;
-  const overallRisk = job.validation?.overallRisk;
   const steps = job.plan?.steps ?? [];
+  const overallRisk = job.validation?.overallRisk;
+
+  // Build a meaningful task name from available data
+  const taskName = deriveTaskName(job, steps);
+
+  // Show validation reasoning, or fall back to plan reasoning
+  const reason = job.validation?.reasoning ?? job.plan?.reasoning;
 
   const handleApprove = useCallback(async (): Promise<void> => {
     setResponding(true);
     try {
-      await api.post(`/jobs/${job.id}/approve`);
+      // Fetch a one-time nonce first, then approve with it
+      const { nonce } = await api.post<{ nonce: string }>(`/jobs/${job.id}/nonce`);
+      await api.post(`/jobs/${job.id}/approve`, { nonce });
     } catch {
       // Server will send updated status via WebSocket
     } finally {
@@ -77,7 +80,7 @@ function ApprovalCard({ job, onSelect }: ApprovalCardProps): React.ReactElement 
   const handleReject = useCallback(async (): Promise<void> => {
     setResponding(true);
     try {
-      await api.post(`/jobs/${job.id}/reject`);
+      await api.post(`/jobs/${job.id}/reject`, {});
     } catch {
       // Server will send updated status via WebSocket
     } finally {
@@ -170,6 +173,37 @@ function ApprovalCard({ job, onSelect }: ApprovalCardProps): React.ReactElement 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/** Derive a human-readable task name from job data, with sensible fallbacks. */
+function deriveTaskName(job: Job, steps: ExecutionStep[]): string {
+  // Explicit task name from metadata
+  if (typeof job.metadata?.taskName === 'string' && job.metadata.taskName) {
+    return job.metadata.taskName;
+  }
+
+  // Derive from plan reasoning (truncated)
+  if (job.plan?.reasoning) {
+    const reasoning = job.plan.reasoning;
+    return reasoning.length > 60 ? `${reasoning.slice(0, 57)}...` : reasoning;
+  }
+
+  // Derive from single step description
+  if (steps.length === 1 && steps[0]?.description) {
+    return steps[0].description;
+  }
+
+  // Derive from step actions
+  if (steps.length > 0) {
+    const first = steps[0];
+    if (first) {
+      const action = first.description ?? `${first.gear}: ${first.action}`;
+      if (steps.length === 1) return action;
+      return `${action} (+${String(steps.length - 1)} more)`;
+    }
+  }
+
+  return `Task ${job.id.slice(0, 8)}`;
+}
 
 function SectionHeader({ count }: { count: number }): React.ReactElement {
   return (

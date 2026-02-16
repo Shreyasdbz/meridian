@@ -562,7 +562,7 @@ describe('Planner', () => {
     expect(systemMessage?.content).toContain('cannot access secrets directly');
   });
 
-  it('should handle JSON wrapped in markdown code blocks as malformed', async () => {
+  it('should extract JSON from markdown code blocks as valid plan', async () => {
     const wrappedJson = '```json\n' + validPlanJson + '\n```';
     const provider = createMockProvider(wrappedJson);
     const planner = new Planner({ provider, model: 'test-model', auditWriter });
@@ -573,7 +573,9 @@ describe('Planner', () => {
       forceFullPath: true,
     });
 
-    const error = result as PlanError;
-    expect(error.type).toBe('failure');
+    // tryParseExecutionPlan now extracts JSON from code blocks
+    const planResult = result as PlanResult;
+    expect(planResult.path).toBe('full');
+    expect(planResult.plan).toBeDefined();
   });
 });
