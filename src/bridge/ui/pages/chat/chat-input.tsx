@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 
 import { VoiceInput } from '../../components/voice-input/index.js';
+import { useUIStore } from '../../stores/ui-store.js';
 
 interface ChatInputProps {
   value: string;
@@ -65,6 +66,9 @@ export function ChatInput({
     };
   }, []);
 
+  const trustMode = useUIStore((s) => s.trustMode);
+  const toggleTrustMode = useUIStore((s) => s.toggleTrustMode);
+
   const isMac = typeof navigator !== 'undefined' && /Mac/.test(navigator.userAgent);
   const sendShortcutLabel = isMac ? '\u2318\u21A9' : 'Ctrl+\u21A9';
 
@@ -113,6 +117,19 @@ export function ChatInput({
         <span className="text-[10px] text-gray-400 dark:text-gray-500">
           Markdown supported
         </span>
+        <button
+          type="button"
+          onClick={toggleTrustMode}
+          className={`rounded px-1.5 py-0.5 text-[10px] font-medium transition-colors ${
+            trustMode
+              ? 'bg-amber-500 text-white'
+              : 'text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300'
+          }`}
+          title={trustMode ? 'Trust mode on — plans auto-approved' : 'Trust mode off — plans require approval'}
+          data-testid="trust-mode-toggle"
+        >
+          Trust
+        </button>
         <span className="text-[10px] text-gray-400 dark:text-gray-500">
           {sendShortcutLabel} to send
         </span>

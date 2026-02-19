@@ -16,6 +16,7 @@ interface MessageAxisAdapter {
     conversationId?: string;
     source: 'user' | 'schedule' | 'webhook' | 'sub-job';
     sourceMessageId?: string;
+    metadata?: Record<string, unknown>;
   }): Promise<Job>;
 }
 
@@ -84,6 +85,7 @@ export function messageRoutes(
           conversationId: { type: 'string' },
           content: { type: 'string', minLength: 1, maxLength: 100000 },
           modality: { type: 'string', enum: ['text', 'voice', 'image', 'video'] },
+          trustMode: { type: 'boolean' },
         },
       },
     },
@@ -95,6 +97,7 @@ export function messageRoutes(
       conversationId: string;
       content: string;
       modality?: string;
+      trustMode?: boolean;
     };
 
     // Verify conversation exists and is active
@@ -147,15 +150,17 @@ export function messageRoutes(
         conversationId: body.conversationId,
         source: 'user',
         sourceMessageId: messageId,
+        ...(body.trustMode ? { metadata: { trustMode: true } } : {}),
       });
       jobId = job.id;
     } else {
       jobId = generateId();
+      const metadataJson = body.trustMode ? JSON.stringify({ trustMode: true }) : null;
       await db.run(
         'meridian',
-        `INSERT INTO jobs (id, conversation_id, status, priority, source_type, source_message_id, created_at, updated_at)
-         VALUES (?, ?, 'pending', 'normal', 'user', ?, ?, ?)`,
-        [jobId, body.conversationId, messageId, now, now],
+        `INSERT INTO jobs (id, conversation_id, status, priority, source_type, source_message_id, metadata_json, created_at, updated_at)
+         VALUES (?, ?, 'pending', 'normal', 'user', ?, ?, ?, ?)`,
+        [jobId, body.conversationId, messageId, metadataJson, now, now],
       );
     }
 

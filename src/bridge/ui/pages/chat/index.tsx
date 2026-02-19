@@ -257,9 +257,11 @@ export function ChatPage(): React.ReactElement {
 
     // Send to API (creates a job via Axis)
     try {
+      const { trustMode } = useUIStore.getState();
       await api.post('/messages', {
         conversationId,
         content,
+        ...(trustMode ? { trustMode: true } : {}),
       });
     } catch {
       addMessage({

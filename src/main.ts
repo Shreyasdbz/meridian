@@ -218,7 +218,7 @@ export function createPipelineProcessor(options: PipelineProcessorOptions): JobP
         // action-like content or false inability claims.
         const requiresReroute = planPayload?.['requiresReroute'] === true;
         if (requiresReroute) {
-          const rerouteReason = (planPayload?.['rerouteReason'] as string | undefined) ?? 'verification failed';
+          const rerouteReason = (planPayload['rerouteReason'] as string | undefined) ?? 'verification failed';
           logger.warn('Fast-path verification failed, rerouting to full path', {
             jobId,
             reason: rerouteReason,
@@ -295,7 +295,8 @@ export function createPipelineProcessor(options: PipelineProcessorOptions): JobP
               return;
             }
 
-            const validation = validateResponse.payload as unknown as ValidationResult;
+            const validationRaw: unknown = validateResponse.payload;
+            const validation = validationRaw as ValidationResult | undefined;
             if (!validation || typeof validation.verdict !== 'string') {
               await jobQueue.transition(jobId, 'validating', 'failed', {
                 error: {
@@ -324,6 +325,11 @@ export function createPipelineProcessor(options: PipelineProcessorOptions): JobP
             }
 
             if (validation.verdict === 'needs_user_approval') {
+              if (job.metadata?.trustMode === true) {
+                logger.info('Trust mode: auto-approving rerouted job', { jobId });
+                await executePlan(jobId, correlationId, retryPlan, validation, signal, router, jobQueue, db, logger, options.bridge, job.conversationId);
+                return;
+              }
               await jobQueue.transition(jobId, 'validating', 'awaiting_approval', { validation });
               logger.info('Rerouted job awaiting user approval', { jobId });
               return;
@@ -459,6 +465,11 @@ export function createPipelineProcessor(options: PipelineProcessorOptions): JobP
       }
 
       if (validation.verdict === 'needs_user_approval') {
+        if (job.metadata?.trustMode === true) {
+          logger.info('Trust mode: auto-approving job', { jobId });
+          await executePlan(jobId, correlationId, plan, validation, signal, router, jobQueue, db, logger, options.bridge, job.conversationId);
+          return;
+        }
         // Route to awaiting_approval — Bridge broadcasts via WebSocket
         await jobQueue.transition(jobId, 'validating', 'awaiting_approval', { validation });
         // The job stays in awaiting_approval until user approves via Bridge API.

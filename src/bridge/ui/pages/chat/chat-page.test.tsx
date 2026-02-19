@@ -6,6 +6,8 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 
 import type { Message, Conversation } from '@meridian/shared';
 
+import { useUIStore } from '../../stores/ui-store.js';
+
 import { ChatInput } from './chat-input.js';
 import { ConversationSidebar } from './conversation-sidebar.js';
 import { MessageBubble } from './message-bubble.js';
@@ -76,6 +78,9 @@ vi.mock('../../stores/auth-store.js', () => ({
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  // Reset trust mode state between tests to prevent leakage
+  localStorage.removeItem('meridian-trust-mode');
+  useUIStore.setState({ trustMode: false });
 });
 
 // ---------------------------------------------------------------------------
@@ -821,5 +826,104 @@ describe('Vocabulary module', () => {
 
     expect(getStatusLabel('unknown_status')).toBe('unknown_status');
     expect(getComponentLabel('unknown_component')).toBe('unknown_component');
+  });
+});
+
+// ===========================================================================
+// Trust Mode toggle
+// ===========================================================================
+
+describe('Trust mode toggle', () => {
+  it('should render the trust mode toggle button', () => {
+    render(
+      <ChatInput
+        value=""
+        onChange={vi.fn()}
+        onSend={vi.fn()}
+      />,
+    );
+
+    const toggle = screen.getByTestId('trust-mode-toggle');
+    expect(toggle).toBeInTheDocument();
+    expect(toggle).toHaveTextContent('Trust');
+  });
+
+  it('should toggle trust mode on click', async () => {
+    render(
+      <ChatInput
+        value=""
+        onChange={vi.fn()}
+        onSend={vi.fn()}
+      />,
+    );
+
+    const toggle = screen.getByTestId('trust-mode-toggle');
+
+    // Initially off — should not have amber bg
+    expect(toggle.className).not.toContain('bg-amber-500');
+
+    await userEvent.click(toggle);
+
+    // After click, should have amber bg (trust mode on)
+    expect(toggle.className).toContain('bg-amber-500');
+  });
+
+  it('should toggle trust mode off on second click', async () => {
+    render(
+      <ChatInput
+        value=""
+        onChange={vi.fn()}
+        onSend={vi.fn()}
+      />,
+    );
+
+    const toggle = screen.getByTestId('trust-mode-toggle');
+
+    // Click once to enable
+    await userEvent.click(toggle);
+    expect(toggle.className).toContain('bg-amber-500');
+
+    // Click again to disable
+    await userEvent.click(toggle);
+    expect(toggle.className).not.toContain('bg-amber-500');
+  });
+
+  it('should show correct title based on trust mode state', async () => {
+    render(
+      <ChatInput
+        value=""
+        onChange={vi.fn()}
+        onSend={vi.fn()}
+      />,
+    );
+
+    const toggle = screen.getByTestId('trust-mode-toggle');
+
+    // Initially off
+    expect(toggle).toHaveAttribute('title', 'Trust mode off — plans require approval');
+
+    // Click to enable
+    await userEvent.click(toggle);
+    expect(toggle).toHaveAttribute('title', 'Trust mode on — plans auto-approved');
+  });
+
+  it('should persist trust mode to localStorage', async () => {
+    render(
+      <ChatInput
+        value=""
+        onChange={vi.fn()}
+        onSend={vi.fn()}
+      />,
+    );
+
+    const toggle = screen.getByTestId('trust-mode-toggle');
+
+    // Enable trust mode
+    await userEvent.click(toggle);
+    expect(localStorage.getItem('meridian-trust-mode')).toBe('true');
+
+    // Disable trust mode
+    await userEvent.click(toggle);
+    expect(localStorage.getItem('meridian-trust-mode')).toBe('false');
   });
 });

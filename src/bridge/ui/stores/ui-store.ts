@@ -9,6 +9,7 @@ interface UIState {
   activeView: ActiveView;
   sidebarOpen: boolean;
   pendingApprovalCount: number;
+  trustMode: boolean;
 }
 
 interface UIActions {
@@ -18,12 +19,14 @@ interface UIActions {
   toggleSidebar: () => void;
   setSidebarOpen: (open: boolean) => void;
   setPendingApprovalCount: (count: number) => void;
+  setTrustMode: (enabled: boolean) => void;
+  toggleTrustMode: () => void;
 }
 
 type UIStore = UIState & UIActions;
 
 function getSystemTheme(): 'dark' | 'light' {
-  if (typeof window === 'undefined') return 'dark';
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return 'dark';
   return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 }
 
@@ -41,6 +44,11 @@ function resolveTheme(theme: Theme): 'dark' | 'light' {
   return theme;
 }
 
+function loadTrustMode(): boolean {
+  if (typeof window === 'undefined') return false;
+  return localStorage.getItem('meridian-trust-mode') === 'true';
+}
+
 export const useUIStore = create<UIStore>((set) => {
   const initialTheme = loadTheme();
   const initialResolved = resolveTheme(initialTheme);
@@ -51,6 +59,7 @@ export const useUIStore = create<UIStore>((set) => {
     activeView: 'chat',
     sidebarOpen: false,
     pendingApprovalCount: 0,
+    trustMode: loadTrustMode(),
 
     setTheme: (theme) => {
       const resolved = resolveTheme(theme);
@@ -76,6 +85,19 @@ export const useUIStore = create<UIStore>((set) => {
 
     setPendingApprovalCount: (count) => {
       set({ pendingApprovalCount: count });
+    },
+
+    setTrustMode: (enabled) => {
+      localStorage.setItem('meridian-trust-mode', String(enabled));
+      set({ trustMode: enabled });
+    },
+
+    toggleTrustMode: () => {
+      set((state) => {
+        const next = !state.trustMode;
+        localStorage.setItem('meridian-trust-mode', String(next));
+        return { trustMode: next };
+      });
     },
   };
 });
