@@ -519,6 +519,138 @@ export function createPipelineProcessor(options: PipelineProcessorOptions): JobP
 }
 
 /**
+ * Strip internal metadata fields (e.g., _provenance) from Gear results
+ * before displaying to the user.
+ */
+function stripInternalFields(obj: Record<string, unknown>): Record<string, unknown> {
+  const cleaned: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (!key.startsWith('_')) {
+      cleaned[key] = value;
+    }
+  }
+  return cleaned;
+}
+
+/**
+ * Format step results into a human-readable Markdown summary.
+ * Handles known Gear output shapes (web-search, file-manager, web-fetch, shell)
+ * and falls back to pretty-printed JSON for unknown shapes.
+ */
+function formatStepResults(
+  stepResults: Array<{ stepId: string; result?: Record<string, unknown>; error?: unknown }>,
+): string {
+  const parts: string[] = [];
+
+  for (const step of stepResults) {
+    if (step.error) continue;
+    const result = step.result;
+    if (!result) continue;
+
+    // Web-search Gear: { results: SearchResult[], query, resultCount }
+    const searchResults = result['results'];
+    if (Array.isArray(searchResults) && typeof result['query'] === 'string') {
+      const query = result['query'] as string;
+      if (searchResults.length === 0) {
+        parts.push(`No results found for "${query}".`);
+      } else {
+        parts.push(`**Search results for "${query}":**\n`);
+        for (const item of searchResults) {
+          const sr = item as Record<string, unknown>;
+          const title = sr['title'] as string | undefined;
+          const url = sr['url'] as string | undefined;
+          const snippet = sr['snippet'] as string | undefined;
+          if (title && url) {
+            parts.push(`- **[${title}](${url})**${snippet ? `\n  ${snippet}` : ''}`);
+          }
+        }
+      }
+      continue;
+    }
+
+    // File-manager read_file: { content, size, encoding, path }
+    if (typeof result['content'] === 'string' && typeof result['path'] === 'string' && 'size' in result) {
+      parts.push(`**${result['path']}:**\n\`\`\`\n${result['content']}\n\`\`\``);
+      continue;
+    }
+
+    // File-manager list_files: { files: FileEntry[], count }
+    if (Array.isArray(result['files']) && typeof result['count'] === 'number') {
+      const files = result['files'] as Array<Record<string, unknown>>;
+      if (files.length === 0) {
+        parts.push('No files found.');
+      } else {
+        parts.push(`**${result['count']} file(s) found:**\n`);
+        for (const f of files) {
+          const name = f['name'] as string | undefined;
+          const type = f['type'] as string | undefined;
+          const size = f['size'] as number | undefined;
+          if (name) {
+            const sizeStr = typeof size === 'number' ? ` (${formatFileSize(size)})` : '';
+            const icon = type === 'directory' ? '📁' : '📄';
+            parts.push(`- ${icon} ${name}${sizeStr}`);
+          }
+        }
+      }
+      continue;
+    }
+
+    // File-manager write_file: { path, size }
+    if (typeof result['path'] === 'string' && typeof result['size'] === 'number' && Object.keys(stripInternalFields(result)).length <= 2) {
+      parts.push(`File written: **${result['path']}** (${formatFileSize(result['size'] as number)})`);
+      continue;
+    }
+
+    // File-manager delete_file: { deleted, path }
+    if (result['deleted'] === true && typeof result['path'] === 'string') {
+      parts.push(`File deleted: **${result['path']}**`);
+      continue;
+    }
+
+    // Shell Gear: { text, file }
+    if (typeof result['text'] === 'string' && 'file' in result) {
+      const text = result['text'] as string;
+      if (text) {
+        parts.push(`\`\`\`\n${text}\n\`\`\``);
+      } else {
+        parts.push('Command completed with no output.');
+      }
+      continue;
+    }
+
+    // Web-fetch Gear: { content, contentType, statusCode, url }
+    if (typeof result['content'] === 'string' && typeof result['url'] === 'string' && 'statusCode' in result) {
+      const url = result['url'] as string;
+      const content = result['content'] as string;
+      const truncated = content.length > 2000 ? content.slice(0, 2000) + '\n...(truncated)' : content;
+      parts.push(`**Fetched [${url}](${url}):**\n\n${truncated}`);
+      continue;
+    }
+
+    // Notification Gear: { sent, level, sentAt }
+    if (result['sent'] === true && typeof result['level'] === 'string') {
+      parts.push(`Notification sent (${result['level']}).`);
+      continue;
+    }
+
+    // Generic fallback: pretty-print JSON without internal fields
+    const cleaned = stripInternalFields(result);
+    parts.push(`**Step ${step.stepId}:**\n\`\`\`json\n${JSON.stringify(cleaned, null, 2)}\n\`\`\``);
+  }
+
+  return parts.length > 0 ? parts.join('\n\n') : 'Task completed successfully.';
+}
+
+/**
+ * Format byte size into a human-readable string.
+ */
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/**
  * Execute all plan steps via the Gear runtime.
  * The job must already be in 'executing' state.
  *
@@ -633,11 +765,8 @@ async function executeJobSteps(
   // All steps completed successfully
   const jobResult = { path: 'full' as const, steps: stepResults };
 
-  // Store assistant response summarizing results
-  const resultSummary = stepResults
-    .filter((s) => !s.error)
-    .map((s) => `Step ${s.stepId}: ${JSON.stringify(s.result)}`)
-    .join('\n');
+  // Build a human-readable summary of Gear results
+  const resultSummary = formatStepResults(stepResults);
 
   await db.run(
     'meridian',
@@ -648,8 +777,15 @@ async function executeJobSteps(
 
   await jobQueue.transition(jobId, 'executing', 'completed', { result: jobResult });
 
-  // Broadcast result via WebSocket
+  // Broadcast response via WebSocket — send as 'chunk' so the chat UI renders it,
+  // then 'result' for Mission Control.
   if (bridge) {
+    bridge.wsManager.broadcast({
+      type: 'chunk',
+      jobId,
+      content: resultSummary,
+      done: true,
+    });
     bridge.wsManager.broadcast({
       type: 'result',
       jobId,
